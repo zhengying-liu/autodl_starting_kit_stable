@@ -1,0 +1,12 @@
+is_sequence: false
+sample_count: 10
+output_dim: 10
+matrix_spec {
+  col_count: 28
+  row_count: 28
+  is_sequence_col: false
+  is_sequence_row: false
+  has_locality_col: true
+  has_locality_row: true
+  format: DENSE
+}
