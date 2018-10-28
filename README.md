@@ -5,6 +5,18 @@ ALL INFORMATION, SOFTWARE, DOCUMENTATION, AND DATA ARE PROVIDED "AS-IS".
 UNIVERSITE PARIS SUD, INRIA, CHALEARN, AND/OR OTHER ORGANIZERS
 OR CODE AUTHORS DISCLAIM ANY EXPRESSED OR IMPLIED WARRANTIES.
 
+## Download This Starting Kit
+
+ You can download this starting kit by clicking on the green button "Clone or download" on top of [this GitHub repo](https://github.com/zhengying-liu/autodl_starting_kit_stable), then "Download ZIP". You'll have this whole starting kit by unzipping the downloaded file.
+
+ Another convenient way is to use **git clone**:
+ ```
+ cd <path_to_your_directory>
+ git clone https://github.com/zhengying-liu/autodl_starting_kit_stable.git
+ ```
+
+ Then you can begin your participation to AutoDL challenge by carefully reading this README.md file (which you are already doing).
+
 ## Local Development and Testing
 To make your own submission to AutoDL challenge, you need to modify the file
 `model.py` in `AutoDL_sample_code_submission/`, which implements the logic of your
