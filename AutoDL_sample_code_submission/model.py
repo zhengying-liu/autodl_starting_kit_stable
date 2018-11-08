@@ -43,16 +43,24 @@ class Model(algorithm.Algorithm):
     super(Model, self).__init__(metadata)
     self.output_dim = self.metadata_.get_output_size()
 
+    # Set batch size (for both training and testing)
+    self.batch_size = 30
+
     # Get dataset name.
     self.dataset_name = self.metadata_.get_dataset_name()\
                           .split('/')[-2].split('.')[0]
 
     model_fn = self.model_fn
 
+    # Directory to store checkpoints of model during training
+    model_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                             os.pardir,
+                             'checkpoints_' + self.dataset_name)
+
     # Classifier using model_fn (see image_model_fn and other model_fn below)
     self.classifier = tf.estimator.Estimator(
       model_fn=model_fn,
-      model_dir='/tmp/checkpoints_' + self.dataset_name)
+      model_dir=model_dir)
 
     # Attributes for managing time budget
     # Cumulated number of training steps
@@ -82,9 +90,9 @@ class Model(algorithm.Algorithm):
       dataset: a `tf.data.Dataset` object. Each example is of the form
             (matrix_bundle_0, matrix_bundle_1, ..., matrix_bundle_(N-1), labels)
           where each matrix bundle is a tf.Tensor of shape
-            (batch_size, sequence_size, row_count, col_count).
+            (sequence_size, row_count, col_count).
           The variable `labels` is a tf.Tensor of shape
-            (batch_size, output_dim,)
+            (output_dim,)
           where `output_dim` represents number of classes of this
           multilabel classification task. For the first version of AutoDL
           challenge, the number of bundles `N` will be set to 1.
@@ -100,6 +108,12 @@ class Model(algorithm.Algorithm):
     # to a dict. This example model only uses the first matrix bundle
     # (i.e. matrix_bundle_0) (see the documentation of this train() function above for the description of each example)
     dataset = dataset.map(lambda *x: ({'x': x[0]}, x[-1]))
+
+    # Set batch size
+    dataset = dataset.batch(batch_size=self.batch_size)
+
+    # Convert to RepeatDataset to train for several epochs
+    dataset = dataset.repeat()
 
     def train_input_fn():
       iterator = dataset.make_one_shot_iterator()
@@ -179,6 +193,9 @@ class Model(algorithm.Algorithm):
     # Turn `features` in the tensor pair (features, labels) to a dict
     dataset = dataset.map(lambda *x: ({'x': x[0]}, x[-1]))
 
+    # Set batch size
+    dataset = dataset.batch(batch_size=self.batch_size)
+
     def test_input_fn():
       iterator = dataset.make_one_shot_iterator()
       features, labels = iterator.get_next()
@@ -230,6 +247,7 @@ class Model(algorithm.Algorithm):
 
   # Model functions that contain info on neural network architectures
   # Several model functions are to be implemented, for different domains
+
   def model_fn(self, features, labels, mode):
     """Auto-Scaling CNN model that can be applied to all datasets.
 
@@ -332,10 +350,10 @@ class Model(algorithm.Algorithm):
     """
     # return self.cumulated_num_tests > 10 # Limit to make 10 predictions
     # return np.random.rand() < self.early_stop_proba
-    batch_size = 30 # See ingestion program: D_train.init(batch_size=30, repeat=True)
+    batch_size = self.batch_size
     num_examples = self.metadata_.size()
     num_epochs = self.cumulated_num_steps * batch_size / num_examples
-    return num_epochs > self.num_epochs_we_want_to_train # Train for certain number of epochs then stop
+    return num_epochs > self.num_epochs_we_want_to_train # Train for at least certain number of epochs then stop
 
 def print_log(*content):
   """Logging function. (could've also used `import logging`.)"""

@@ -72,7 +72,17 @@ scoring_version = 1.0
 
 # Metric used to compute the score of a point on the learning curve
 def autodl_bac(solution, prediction):
-  ''' Compute the normalized balanced accuracy. '''
+  """Compute the normalized balanced accuracy.
+
+  Args:
+    solution: numpy.ndarray of shape (num_examples, num_classes), in this first
+        edition of AutoDL challenge, all entries will be 0 or 1.
+    prediction: numpy.ndarray of shape (num_examples, num_classes). Prediction
+        made by Model.test(). All entries should be between 0 and 1.
+  Returns:
+    score: a float representing the normalized balanced accuracy, i.e. 2*BAC - 1
+        where BAC is the balanced accuracy ( (TPR+TNR)/2 ) over all classes.
+  """
   label_num = solution.shape[1]
   score = np.zeros(label_num)
   binarize=False
@@ -114,10 +124,6 @@ def get_prediction_files(prediction_dir, basename):
 
 def get_fig_name(basename):
   fig_name = "learning-curve-" + basename + ".png"
-  return fig_name
-
-def get_normalized_fig_name(basename):
-  fig_name = "normalized-learning-curve-" + basename + ".png"
   return fig_name
 
 def get_basename(solution_file):
@@ -310,7 +316,7 @@ if __name__ == "__main__":
     # Get all the solution files from the solution directory
     solution_names = sorted(ls(os.path.join(solution_dir, '*.solution')))
     if len(solution_names) > 1: # Assert only one file is found
-      raise ValueError("Multiple solution file found: {}!".format(solution_names))
+      raise ValueError("Multiple solution files found: {}!".format(solution_names))
     solution_file = solution_names[0]
     # Extract the dataset name from the file name
     basename = get_basename(solution_file)

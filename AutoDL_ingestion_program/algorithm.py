@@ -34,17 +34,16 @@ class Algorithm(object):
       dataset: a `tf.data.Dataset` object. Each example is of the form
             (matrix_bundle_0, matrix_bundle_1, ..., matrix_bundle_(N-1), labels)
           where each matrix bundle is a tf.Tensor of shape
-            (batch_size, sequence_size, row_count, col_count)
-          with default `batch_size`=30 (if you wish you can unbatch and have any
-          batch size you want). `labels` is a tf.Tensor of shape
-            (batch_size, output_dim)
-          The variable `output_dim` represents number of classes of this
+            (sequence_size, row_count, col_count).
+          The variable `labels` is a tf.Tensor of shape
+            (output_dim,)
+          where `output_dim` represents number of classes of this
           multilabel classification task. For the first version of AutoDL
           challenge, the number of bundles `N` will be set to 1.
 
-      remaining_time_budget: a `float`, the name should be clear. If not `None`,
-          this `train` method should terminate within this time budget.
-          Otherwise the submission will fail.
+      remaining_time_budget: time remaining to execute train(). The method
+          should keep track of its execution time to avoid exceeding its time
+          budget. If remaining_time_budget is None, no time budget is imposed.
     """
     raise NotImplementedError("Algorithm class does not have any training.")
 
@@ -58,5 +57,9 @@ class Algorithm(object):
           here `sample_count` is the number of examples in this dataset as test
           set and `output_dim` is the number of labels to be predicted. The
           values should be binary or in the interval [0,1].
+          IMPORTANT: if returns None, this means that the algorithm
+          chooses to stop training, and the whole train/test will stop. The
+          performance of the last prediction will be used to compute area under
+          learning curve.
     """
     raise NotImplementedError("Algorithm class does not have any testing.")

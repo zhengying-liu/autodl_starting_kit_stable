@@ -27,18 +27,26 @@ import dataset_utils
 from data_pb2 import DataSpecification
 from data_pb2 import MatrixSpec
 
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string("dataset_dir", "",
-                    "absolute path to data directory.")
+# FLAGS = flags.FLAGS
+#
+# flags.DEFINE_string("dataset_dir", "",
+#                     "absolute path to data directory.")
+#
+# def metadata_filename(dataset_name):
+#   return os.path.join(FLAGS.dataset_dir, dataset_name,
+#                       "metadata.textproto")
+#
+#
+# def dataset_file_pattern(dataset_name):
+#   return os.path.join(FLAGS.dataset_dir, dataset_name, "sample*")
 
 def metadata_filename(dataset_name):
-  return os.path.join(FLAGS.dataset_dir, dataset_name,
+  return os.path.join("", dataset_name,
                       "metadata.textproto")
 
 
 def dataset_file_pattern(dataset_name):
-  return os.path.join(FLAGS.dataset_dir, dataset_name, "sample*")
+  return os.path.join("", dataset_name, "sample*")
 
 
 class AutoDLMetadata(object):
@@ -76,6 +84,9 @@ class AutoDLMetadata(object):
   def size(self):
     return self.metadata_.sample_count
 
+  def get_label_to_index_map(self):
+    return self.metadata_.label_to_index_map
+
 
 class AutoDLDataset(object):
   """AutoDL Datasets out of TFRecords of SequenceExamples.
@@ -92,6 +103,8 @@ class AutoDLDataset(object):
     """
     self.dataset_name_ = dataset_name
     self.metadata_ = AutoDLMetadata(dataset_name)
+    self._create_dataset()
+    self.dataset_ = self.dataset_.map(self._parse_function)
 
   def get_dataset(self):
     """Returns a tf.data.dataset object."""
@@ -194,14 +207,6 @@ class AutoDLDataset(object):
                       dataset_file_pattern(self.dataset_name_) + "'.")
       logging.info("Number of training files: %s.", str(len(files)))
       self.dataset_ = tf.data.TFRecordDataset(files)
-
-  def init(self, batch_size=30, repeat=True):
-    self._create_dataset()
-    self.dataset_ = self.dataset_.map(self._parse_function)
-    self.dataset_ = self.dataset_.batch(batch_size)
-    if repeat:
-      self.dataset_ = self.dataset_.repeat()
-
 
 def main(argv):
   del argv  # Unused.
