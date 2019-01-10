@@ -154,16 +154,21 @@ class AutoDLDataset(object):
     for i in range(self.metadata_.get_bundle_size()):
       key_dense = self._feature_key(i, "dense_input")
       row_count, col_count = self.metadata_.get_matrix_size(i)
+      fixed_matrix_size = row_count > 0 and col_count > 0
       if key_dense in features:
         f = features[key_dense]
-        sample.append(tf.reshape(f, [-1, row_count, col_count]))
+        if fixed_matrix_size:
+          f = tf.reshape(f, [-1, row_count, col_count])
+        sample.append(f)
 
       key_compressed = self._feature_key(i, "compressed")
       if key_compressed in features:
         compressed_images = features[key_compressed].values
         images = tf.map_fn(
             dataset_utils.decompress_image, compressed_images, dtype=tf.float32)
-        sample.append(tf.reshape(images, [-1, row_count, col_count]))
+        if fixed_matrix_size:
+          images = tf.reshape(images, [-1, row_count, col_count])
+        sample.append(images)
 
       key_sparse_val = self._feature_key(i, "sparse_value")
       if key_sparse_val in features:
@@ -187,10 +192,10 @@ class AutoDLDataset(object):
         sample.append(tf.sparse_tensor_to_dense(sparse_tensor))
 
     # Enforce the Sample tensors to have the correct sequence length.
-    sequence_size = self.metadata_.get_sequence_size()
-    sample = [
-        dataset_utils.enforce_sequence_size(t, sequence_size) for t in sample
-    ]
+    # sequence_size = self.metadata_.get_sequence_size()
+    # sample = [
+    #     dataset_utils.enforce_sequence_size(t, sequence_size) for t in sample
+    # ]
 
     labels = tf.sparse_to_dense(
         contexts["label_index"].values, (self.metadata_.get_output_size(),),
