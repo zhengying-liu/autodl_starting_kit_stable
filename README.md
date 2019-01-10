@@ -1,4 +1,4 @@
-This is an example AutoDL starting kit
+AutoDL starting kit
 ======================================
 
 ALL INFORMATION, SOFTWARE, DOCUMENTATION, AND DATA ARE PROVIDED "AS-IS".
