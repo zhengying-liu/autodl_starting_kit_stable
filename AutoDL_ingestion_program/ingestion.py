@@ -291,7 +291,7 @@ if __name__=="__main__" and debug_mode<4:
         # ========= Creating a model
         print_log("Creating model...")
         ##### Begin creating model #####
-        M = Model(D_test.get_metadata()) # The metadata of D_train and D_test only differ in sample_count
+        M = Model(D_train.get_metadata()) # The metadata of D_train and D_test only differ in sample_count
         ###### End creating model ######
 
         # Keeping track of how many predictions are made

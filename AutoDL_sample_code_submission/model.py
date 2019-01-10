@@ -265,13 +265,12 @@ class Model(algorithm.Algorithm):
     # Replace missing values by 0
     hidden_layer = tf.where(tf.is_nan(input_layer),
                            tf.zeros_like(input_layer), input_layer)
-    print_log("Shape before pre-scaling:", hidden_layer.shape)
 
     # Pre-rescaling: use 3D average pooling to rescale the 3D tensor such that
     # each example has reasonable number of entries
     REASONABLE_NUM_ENTRIES = 10000
-    print_log("Will rescale all 3D tensors to have less than {} entries."\
-              .format(REASONABLE_NUM_ENTRIES))
+    # print_log("Will rescale all 3D tensors to have less than {} entries."\
+    #           .format(REASONABLE_NUM_ENTRIES))
     while(get_num_entries(hidden_layer) > REASONABLE_NUM_ENTRIES):
       shape = hidden_layer.shape
       pool_size = (min(2, shape[1]), min(2, shape[2]), min(2, shape[3]))
@@ -280,7 +279,6 @@ class Model(algorithm.Algorithm):
                                                 strides=pool_size,
                                                 padding='valid',
                                                 data_format='channels_last')
-    print_log("Shape after pre-scaling:", hidden_layer.shape)
 
     # After pre-rescaling, repeatedly apply 3D CNN, followed by 3D max pooling
     # until the hidden layer has reasonable number of entries
@@ -297,12 +295,10 @@ class Model(algorithm.Algorithm):
                                             strides=pool_size,
                                             padding='valid',
                                             data_format='channels_last')
-      print_log("Shape after max-pooling:", hidden_layer.shape)
       if get_num_entries(hidden_layer) < REASONABLE_NUM_ENTRIES:
         break
 
     hidden_layer = tf.layers.flatten(hidden_layer)
-    print_log("Shape after flattening:", hidden_layer.shape)
     hidden_layer = tf.layers.dense(inputs=hidden_layer, units=64, activation=tf.nn.relu)
     hidden_layer = tf.layers.dropout(inputs=hidden_layer, rate=0.15, training=mode == tf.estimator.ModeKeys.TRAIN)
 
