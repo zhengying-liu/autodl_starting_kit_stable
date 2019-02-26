@@ -53,6 +53,10 @@ We provide a tutorial in the form of a Jupyter notebook. When you are in your do
 ```
 jupyter-notebook --ip=127.0.0.1 --allow-root &
 ```
+Then cut and paste the URL containing your token. It should look like something like that:
+```
+http://127.0.0.1:8888/?token=82e416e792c8f6a9f2194d2f4dbbd3660ad4ca29a4c58fe7
+```
 
 ## How to prepare a ZIP file for submission
 Zip the contents of AutoDL_sample_code_submission (without the directory structure)
