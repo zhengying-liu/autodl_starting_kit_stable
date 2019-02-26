@@ -51,7 +51,7 @@ you can also modify the directory containing your other sample code
 ## How to run the tutorial
 We provide a tutorial in the form of a Jupyter notebook. When you are in your docker container, enter:
 ```
-jupyter-notebook --ip=127.0.0.1 --allow-root
+jupyter-notebook --ip=127.0.0.1 --allow-root &
 ```
 
 ## How to prepare a ZIP file for submission
