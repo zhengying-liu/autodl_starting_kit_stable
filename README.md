@@ -5,7 +5,7 @@ ALL INFORMATION, SOFTWARE, DOCUMENTATION, AND DATA ARE PROVIDED "AS-IS".
 UNIVERSITE PARIS SUD, INRIA, CHALEARN, AND/OR OTHER ORGANIZERS
 OR CODE AUTHORS DISCLAIM ANY EXPRESSED OR IMPLIED WARRANTIES.
 
-## Download This Starting Kit
+## Download this starting kit
 
  You can download this starting kit by clicking on the green button "Clone or download" on top of [this GitHub repo](https://github.com/zhengying-liu/autodl_starting_kit_stable), then "Download ZIP". You'll have this whole starting kit by unzipping the downloaded file.
 
@@ -17,7 +17,7 @@ OR CODE AUTHORS DISCLAIM ANY EXPRESSED OR IMPLIED WARRANTIES.
 
 Then you can begin participating to the AutoDL challenge by carefully reading this README.md file.
 
-## Local Development and Testing
+## Local development and testing
 To make your own submission to AutoDL challenge, you need to modify the file
 `model.py` in `AutoDL_sample_code_submission/`, which implements the logic of your
 algorithm. You can then test it on your local computer using Docker, in the exact same environment as on the CodaLab challenge plarform. Advanced users can also run local test without Docker, if they install all the required packages, see the [Docker file](https://github.com/zhengying-liu/autodl/blob/master/docker/Dockerfile).
