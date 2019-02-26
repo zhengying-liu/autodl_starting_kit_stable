@@ -63,4 +63,4 @@ Zip the contents of AutoDL_sample_code_submission (without the directory structu
 ```
 zip mysubmission.zip AutoDL_sample_code_submission/*
 ```
-and use the "Upload a Submission" button for make a submission to CodaLab.
+then use the "Upload a Submission" button to make a submission to CodaLab.
