@@ -26,7 +26,7 @@ If you are new to docker, install docker from https://docs.docker.com/get-starte
 Then, at the shell, run:
 ```
 cd path_to/AutoDL_starting_kit_stable/
-docker run memory=4g -it -u root -v $(pwd):/app/codalab -p 8888:8888 evariste/autodl:dockerfile
+docker run --memory=4g -it -u root -v $(pwd):/app/codalab -p 8888:8888 evariste/autodl:dockerfile
 ```
 Make sure you use enough RAM (**at least 4GB**). 
 You will then be able to run the `ingestion program` (to produce predictions) and
