@@ -28,8 +28,8 @@ Then, at the shell, run:
 cd path_to/AutoDL_starting_kit_stable/
 docker run --memory=4g -it -u root -v $(pwd):/app/codalab evariste/autodl:dockerfile bash
 ```
-You will then be able to run the ingestion program (to produce predictions) and
-the scoring program (to evaluate your predictions) on toy sample data. In AutoDL
+You will then be able to run the `ingestion program` (to produce predictions) and
+the `scoring program` (to evaluate your predictions) on toy sample data. In the AutoDL
 challenge, these two programs will run in parallel to give real-time feedback
 (with learning curves). So we provide a Python script to simulate this behavior:
 ```
