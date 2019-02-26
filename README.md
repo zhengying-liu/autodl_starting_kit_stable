@@ -15,15 +15,12 @@ OR CODE AUTHORS DISCLAIM ANY EXPRESSED OR IMPLIED WARRANTIES.
  git clone https://github.com/zhengying-liu/autodl_starting_kit_stable.git
  ```
 
- Then you can begin your participation to the AutoDL challenge by carefully reading this README.md file (which you are already doing).
+Then you can begin participating to the AutoDL challenge by carefully reading this README.md file.
 
 ## Local Development and Testing
 To make your own submission to AutoDL challenge, you need to modify the file
 `model.py` in `AutoDL_sample_code_submission/`, which implements the logic of your
-algorithm. You can then test it in the exact same environment as the CodaLab
-environment using Docker. *WARNING*: You can choose to run local test out of the Docker
-image, but it's possible that certain Python packages you use are not installed
-in the Docker image used in the competition.
+algorithm. You can then test it on your local computer using Docker, in the exact same environment as on the CodaLab challenge plarform. Advanced users can also run local test without Docker, if they install all the required packages, see the [Docker file](https://github.com/zhengying-liu/autodl/blob/master/docker/Dockerfile).
 
 If you are new to docker, install docker from https://docs.docker.com/get-started/.
 Then, at the shell, run:
