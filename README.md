@@ -15,7 +15,7 @@ OR CODE AUTHORS DISCLAIM ANY EXPRESSED OR IMPLIED WARRANTIES.
  git clone https://github.com/zhengying-liu/autodl_starting_kit_stable.git
  ```
 
- Then you can begin your participation to AutoDL challenge by carefully reading this README.md file (which you are already doing).
+ Then you can begin your participation to the AutoDL challenge by carefully reading this README.md file (which you are already doing).
 
 ## Local Development and Testing
 To make your own submission to AutoDL challenge, you need to modify the file
