@@ -25,7 +25,7 @@ algorithm. You can then test it on your local computer using Docker, in the exac
 If you are new to docker, install docker from https://docs.docker.com/get-started/.
 Then, at the shell, run:
 ```
-cd path/to/AutoDL_starting_kit/
+cd path_to/AutoDL_starting_kit_stable/
 docker run --memory=4g -it -u root -v $(pwd):/app/codalab evariste/autodl:dockerfile bash
 ```
 You will then be able to run the ingestion program (to produce predictions) and
