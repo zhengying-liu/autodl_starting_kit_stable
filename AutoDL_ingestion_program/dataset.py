@@ -18,6 +18,8 @@ Reads data in the Tensorflow AutoDL standard format.
 """
 import os
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 from tensorflow import app
 from tensorflow import flags
 from tensorflow import gfile
@@ -75,6 +77,14 @@ class AutoDLMetadata(object):
     return (self.metadata_.matrix_spec[bundle_index].row_count,
             self.metadata_.matrix_spec[bundle_index].col_count)
 
+  def get_num_channels(self, bundle_index):
+    return  self.metadata_.matrix_spec[bundle_index].num_channels
+
+  def get_tensor_size(self, bundle_index):
+    matrix_size = self.get_matrix_size(bundle_index)
+    num_channels = self.get_num_channels(bundle_index)
+    return matrix_size[0], matrix_size[1], num_channels
+
   def get_sequence_size(self):
     return self.metadata_.sequence_size
 
@@ -86,6 +96,9 @@ class AutoDLMetadata(object):
 
   def get_label_to_index_map(self):
     return self.metadata_.label_to_index_map
+
+  def get_feature_to_index_map(self):
+    return self.metadata_.feature_to_index_map
 
 
 class AutoDLDataset(object):
@@ -124,7 +137,11 @@ class AutoDLDataset(object):
       sequence_example_proto: a SequenceExample with "x_dense_input" or sparse
           input representation.
     Returns:
-      An array of tensors.
+      An array of tensors. For first edition of AutoDl challenge, returns a
+          pair `(features, labels)` where `features` is a Tensor of shape
+            [sequence_size, row_count, col_count, num_channels]
+          and `labels` a Tensor of shape
+            [output_dim, ]
     """
     sequence_features = {}
     for i in range(self.metadata_.get_bundle_size()):
@@ -141,7 +158,7 @@ class AutoDLDataset(object):
       else:
         sequence_features[self._feature_key(
             i, "dense_input")] = tf.FixedLenSequenceFeature(
-                self.metadata_.get_matrix_size(i), dtype=tf.float32)
+                self.metadata_.get_tensor_size(i), dtype=tf.float32)
     contexts, features = tf.parse_single_sequence_example(
         sequence_example_proto,
         context_features={
@@ -154,20 +171,29 @@ class AutoDLDataset(object):
     for i in range(self.metadata_.get_bundle_size()):
       key_dense = self._feature_key(i, "dense_input")
       row_count, col_count = self.metadata_.get_matrix_size(i)
+      num_channels = self.metadata_.get_num_channels(i)
+      sequence_size = self.metadata_.get_sequence_size()
       fixed_matrix_size = row_count > 0 and col_count > 0
+      row_count = row_count if row_count > 0 else None
+      col_count = col_count if col_count > 0 else None
       if key_dense in features:
         f = features[key_dense]
-        if fixed_matrix_size:
-          f = tf.reshape(f, [-1, row_count, col_count])
+        if not fixed_matrix_size:
+          raise ValueError("To parse dense data, the tensor shape should " +
+                           "be known but got {} instead..."\
+                           .format((sequence_size, row_count, col_count)))
+        f = tf.reshape(f, [sequence_size, row_count, col_count, num_channels])
         sample.append(f)
 
+      sequence_size = sequence_size if sequence_size > 0 else None
       key_compressed = self._feature_key(i, "compressed")
       if key_compressed in features:
         compressed_images = features[key_compressed].values
+        # `images` here is a 4D-tensor of shape [T, H, W, C], some of which
+        # might be unknown
         images = tf.map_fn(
             dataset_utils.decompress_image, compressed_images, dtype=tf.float32)
-        if fixed_matrix_size:
-          images = tf.reshape(images, [-1, row_count, col_count])
+        images.set_shape([sequence_size, row_count, col_count, 3]) # TODO: 3 to change to num_channels
         sample.append(images)
 
       key_sparse_val = self._feature_key(i, "sparse_value")
@@ -186,16 +212,19 @@ class AutoDLDataset(object):
         sparse_tensor = tf.sparse_reorder(
             tf.SparseTensor(
                 indices, sparse_val.values,
-                [self.metadata_.get_sequence_size(), row_count, col_count]))
+                [sequence_size, row_count, col_count]))
         # TODO: see how we can keep sparse tensors instead of
         # returning dense ones.
-        sample.append(tf.sparse_tensor_to_dense(sparse_tensor))
+        tensor = tf.sparse_tensor_to_dense(sparse_tensor)
+        tensor = tf.reshape(tensor,
+                  [sequence_size, row_count, col_count, 1])
+        sample.append(tensor)
 
     # Enforce the Sample tensors to have the correct sequence length.
-    # sequence_size = self.metadata_.get_sequence_size()
-    # sample = [
-    #     dataset_utils.enforce_sequence_size(t, sequence_size) for t in sample
-    # ]
+    # if sequence_size > 1:
+    #   sample = [
+    #       dataset_utils.enforce_sequence_size(t, sequence_size) for t in sample
+    #   ]
 
     labels = tf.sparse_to_dense(
         contexts["label_index"].values, (self.metadata_.get_output_size(),),
@@ -210,8 +239,27 @@ class AutoDLDataset(object):
       if not files:
         raise IOError("Unable to find training files. data_pattern='" +
                       dataset_file_pattern(self.dataset_name_) + "'.")
-      logging.info("Number of training files: %s.", str(len(files)))
+      # logging.info("Number of training files: %s.", str(len(files)))
       self.dataset_ = tf.data.TFRecordDataset(files)
+
+  def get_nth_element(self, num):
+    """Get n-th element in `autodl_dataset` using iterator."""
+    dataset = self.get_dataset()
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+    with tf.Session() as sess:
+      for _ in range(num+1):
+        tensor_3d, labels = sess.run(next_element)
+    return tensor_3d, labels
+
+  def show_image(self, num):
+    """Visualize a image represented by `tensor_3d` in grayscale."""
+    tensor_3d, label_confidence_pairs = self.get_nth_element(num)
+    image = np.transpose(tensor_3d, (1, 2, 0))
+    plt.imshow(image)
+    plt.title('Labels: ' + str(label_confidence_pairs))
+    plt.show()
+    return plt
 
 def main(argv):
   del argv  # Unused.

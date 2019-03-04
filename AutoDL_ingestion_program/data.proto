@@ -66,6 +66,9 @@ message MatrixSpec {
   optional Format format = 8 [default = DENSE];
 
   optional bool is_sparse = 7 [deprecated = true];
+
+  // Number of channels. This is useful for RGB or sensor data
+  optional int32 num_channels = 9 [default = 1];
 }
 
 message Matrix {
@@ -125,11 +128,13 @@ message DataSpecification {
   optional int32 output_dim = 3;
   // Mapping between int and human-readable label names.
   map<string, int32> label_to_index_map = 4;
+  // Mapping between int and human-readable feature names.
+  map<string, int32> feature_to_index_map = 5;
   // Size of the sequence of matrix bundles.
   // If the size of a sample is less than sequence_size it will be
   // padded with a 0-value matrices. Any bundle after sequence_size will
   // be dropped.
-  optional int32 sequence_size = 5 [default = 1];
+  optional int32 sequence_size = 6 [default = 1];
   // Number of samples in this dataset.
-  optional int32 sample_count = 6;
+  optional int32 sample_count = 7;
 }

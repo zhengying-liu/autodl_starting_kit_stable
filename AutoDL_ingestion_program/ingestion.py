@@ -109,7 +109,7 @@ from os import getcwd as pwd
 from os.path import join
 import shutil # for deleting a whole directory
 from functools import partial
-import tensorflow as tf
+import glob
 
 def _HERE(*args):
     h = os.path.dirname(os.path.realpath(__file__))
@@ -171,7 +171,7 @@ def clean_last_output(output_dir):
     # Clean existing checkpoints
     checkpoints_glob =\
       os.path.abspath(os.path.join(parent_dir, 'checkpoints*'))
-    checkpoints_dirs = tf.gfile.Glob(checkpoints_glob)
+    checkpoints_dirs = glob.glob(checkpoints_glob)
     for checkpoints_dir in checkpoints_dirs:
       if verbose:
         print_log("Cleaning existing checkpoints_dir: {}"\
@@ -203,7 +203,7 @@ if __name__=="__main__" and debug_mode<4:
         program_dir= default_program_dir
         submission_dir= default_submission_dir
         score_dir = join(root_dir, "AutoDL_scoring_output")
-    elif len(argv)==3: # the case for indicating special input_dir and submission_dir
+    elif len(argv)==3: # the case for indicating special input_dir and submission_dir. The case for run_local_test.py
         input_dir = argv[1]
         output_dir = default_output_dir
         program_dir= default_program_dir
@@ -215,6 +215,13 @@ if __name__=="__main__" and debug_mode<4:
         program_dir = os.path.abspath(argv[3])
         submission_dir = os.path.abspath(os.path.join(argv[4], '../submission'))
         score_dir = os.path.abspath(os.path.join(argv[4], '../output'))
+
+    # if verbose: # For debugging
+    #     print_log("sys.argv = ", sys.argv)
+    #     print_log("Using input_dir: " + input_dir)
+    #     print_log("Using output_dir: " + output_dir)
+    #     print_log("Using program_dir: " + program_dir)
+    #     print_log("Using submission_dir: " + submission_dir)
 
     # Redirect standard output to have live debugging info (esp. on CodaLab)
     if REDIRECT_STDOUT:
@@ -242,6 +249,12 @@ if __name__=="__main__" and debug_mode<4:
     if save_previous_results:
         data_io.mvdir(output_dir, output_dir+'_'+the_date)
     data_io.mkdir(output_dir)
+
+    # Create start file to tell scoring program that submission has begin
+    start_filename =  'start.txt'
+    start_filepath = os.path.join(output_dir, start_filename)
+    with open(start_filepath, 'w') as f:
+      f.write('Started!')
 
     #### INVENTORY DATA (and sort dataset names alphabetically)
     datanames = data_io.inventory_data(input_dir)
@@ -325,6 +338,11 @@ if __name__=="__main__" and debug_mode<4:
 
     # Finishing ingestion program
     overall_time_spent = time.time() - overall_start
+
+    # Delete start file to clean folder
+    if os.path.exists(start_filepath):
+      os.remove(start_filepath)
+
     # Write overall_time_spent to a duration.txt file
     duration_filename =  'duration.txt'
     with open(os.path.join(output_dir, duration_filename), 'w') as f:

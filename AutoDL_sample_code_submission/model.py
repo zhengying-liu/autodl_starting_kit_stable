@@ -42,13 +42,21 @@ class Model(algorithm.Algorithm):
   def __init__(self, metadata):
     super(Model, self).__init__(metadata)
     self.output_dim = self.metadata_.get_output_size()
-
-    # Set batch size (for both training and testing)
-    self.batch_size = 30
-
+    self.num_examples_train = self.metadata_.size()
     # Get dataset name.
     self.dataset_name = self.metadata_.get_dataset_name()\
                           .split('/')[-2].split('.')[0]
+    print_log("The dataset {} has {} training examples and {} classes."\
+        .format(self.dataset_name, self.num_examples_train, self.output_dim))
+
+    # Boolean True if example have fixed size
+    row_count, col_count = self.metadata_.get_matrix_size(0)
+    self.fixed_matrix_size = row_count > 0 and col_count > 0
+    sequence_size = self.metadata_.get_sequence_size()
+    self.fixed_sequence_size = sequence_size > 0
+
+    # Set batch size (for both training and testing)
+    self.batch_size = 30
 
     model_fn = self.model_fn
 
@@ -57,10 +65,15 @@ class Model(algorithm.Algorithm):
                              os.pardir,
                              'checkpoints_' + self.dataset_name)
 
-    # Classifier using model_fn (see image_model_fn and other model_fn below)
+    # Classifier using model_fn (see below)
     self.classifier = tf.estimator.Estimator(
       model_fn=model_fn,
       model_dir=model_dir)
+
+    # Attributes for preprocessing
+    self.default_image_size = (112,112)
+    self.default_num_frames = 10
+    self.default_shuffle_buffer = 100
 
     # Attributes for managing time budget
     # Cumulated number of training steps
@@ -71,10 +84,9 @@ class Model(algorithm.Algorithm):
     self.total_test_time = 0
     self.cumulated_num_tests = 0
     self.estimated_time_test = None
+    self.trained = False
     self.done_training = False
-    ################################################
-    # Important critical number for early stopping #
-    ################################################
+    # Critical number for early stopping
     self.num_epochs_we_want_to_train = max(40, self.output_dim)
     # Depends on number of classes (output_dim)
     # see the function self.choose_to_stop_early() below for more details
@@ -87,67 +99,39 @@ class Model(algorithm.Algorithm):
     hopefully improve your model performance after each call.
 
     Args:
-      dataset: a `tf.data.Dataset` object. Each example is of the form
-            (matrix_bundle_0, matrix_bundle_1, ..., matrix_bundle_(N-1), labels)
-          where each matrix bundle is a tf.Tensor of shape
-            (sequence_size, row_count, col_count).
-          The variable `labels` is a tf.Tensor of shape
-            (output_dim,)
-          where `output_dim` represents number of classes of this
-          multilabel classification task. For the first version of AutoDL
-          challenge, the number of bundles `N` will be set to 1.
+      dataset: a `tf.data.Dataset` object. Each of its examples is of the form
+            (example, labels)
+          where `example` is a dense 4-D Tensor of shape
+            (sequence_size, row_count, col_count, num_channels)
+          and `labels` is a 1-D Tensor of shape
+            (output_dim,).
+          Here `output_dim` represents number of classes of this
+          multilabel classification task.
+
+          IMPORTANT: some of the dimensions of `example` might be `None`,
+          which means the shape on this dimension might be variable. In this
+          case, some preprocessing technique should be applied in order to
+          feed the training of a neural network. For example, if an image
+          dataset has `example` of shape
+            (1, None, None, 3)
+          then the images in this datasets may have different sizes. On could
+          apply resizing, cropping or padding in order to have a fixed size
+          input tensor.
 
       remaining_time_budget: time remaining to execute train(). The method
           should keep track of its execution time to avoid exceeding its time
           budget. If remaining_time_budget is None, no time budget is imposed.
     """
-    if self.done_training:
-      return
+    # Get number of steps to train according to some strategy
+    steps_to_train = self.get_steps_to_train(remaining_time_budget)
 
-    # Turn `features` in the tensor tuples (matrix_bundle_0,...,matrix_bundle_(N-1), labels)
-    # to a dict. This example model only uses the first matrix bundle
-    # (i.e. matrix_bundle_0) (see the documentation of this train() function above for the description of each example)
-    dataset = dataset.map(lambda *x: ({'x': x[0]}, x[-1]))
-
-    # Set batch size
-    dataset = dataset.batch(batch_size=self.batch_size)
-
-    # Convert to RepeatDataset to train for several epochs
-    dataset = dataset.repeat()
-
-    def train_input_fn():
-      iterator = dataset.make_one_shot_iterator()
-      features, labels = iterator.get_next()
-      return features, labels
-
-    if not remaining_time_budget: # This is never true in the competition anyway
-      remaining_time_budget = 1200 # if no time limit is given, set to 20min
-
-    # The following snippet of code intends to do
-    # 1. If no training is done before, train for 10 steps (ten batches);
-    # 2. Otherwise, estimate training time per step and time needed for test,
-    #    then compare to remaining time budget to compute a potential maximum
-    #    number of steps (max_steps) that can be trained within time budget;
-    # 3. Choose a number (steps_to_train) between 0 and max_steps and train for
-    #    this many steps. Double it each time.
-    if not self.estimated_time_per_step:
-      steps_to_train = 10
-    else:
-      if self.estimated_time_test:
-        tentative_estimated_time_test = self.estimated_time_test
-      else:
-        tentative_estimated_time_test = 50 # conservative estimation for test
-      max_steps = int((remaining_time_budget - tentative_estimated_time_test) / self.estimated_time_per_step)
-      max_steps = max(max_steps, 1)
-      if self.cumulated_num_tests < np.log(max_steps) / np.log(2):
-        steps_to_train = int(2 ** self.cumulated_num_tests) # Double steps_to_train after each test
-      else:
-        steps_to_train = 0
     if steps_to_train <= 0:
-      print_log("Not enough time remaining for training. " +\
-            "Estimated time for training per step: {:.2f}, ".format(self.estimated_time_per_step) +\
-            "and for test: {}, ".format(tentative_estimated_time_test) +\
-            "but remaining time budget is: {:.2f}. ".format(remaining_time_budget) +\
+      print_log("Not enough time remaining for training. " +
+            "Estimated time for training per step: {:.2f}, "\
+            .format(self.estimated_time_per_step) +
+            "and for test: {}, ".format(tentative_estimated_time_test) +
+            "but remaining time budget is: {:.2f}. "\
+            .format(remaining_time_budget) +
             "Skipping...")
       self.done_training = True
     else:
@@ -156,12 +140,15 @@ class Model(algorithm.Algorithm):
         msg_est = "estimated time for this: " +\
                   "{:.2f} sec.".format(steps_to_train * self.estimated_time_per_step)
       print_log("Begin training for another {} steps...{}".format(steps_to_train, msg_est))
-      train_start = time.time()
+
+      # Prepare input function for training
+      train_input_fn = lambda: self.input_function(dataset, is_training=True)
+
       # Start training
-      self.classifier.train(
-        input_fn=train_input_fn,
-        steps=steps_to_train)
+      train_start = time.time()
+      self.classifier.train(input_fn=train_input_fn, steps=steps_to_train)
       train_end = time.time()
+
       # Update for time budget managing
       train_duration = train_end - train_start
       self.total_train_time += train_duration
@@ -190,17 +177,6 @@ class Model(algorithm.Algorithm):
     if self.done_training:
       return None
 
-    # Turn `features` in the tensor pair (features, labels) to a dict
-    dataset = dataset.map(lambda *x: ({'x': x[0]}, x[-1]))
-
-    # Set batch size
-    dataset = dataset.batch(batch_size=self.batch_size)
-
-    def test_input_fn():
-      iterator = dataset.make_one_shot_iterator()
-      features, labels = iterator.get_next()
-      return features, labels
-
     # The following snippet of code intends to do:
     # 0. Use the function self.choose_to_stop_early() to decide if stop the whole
     #    train/predict process for next call
@@ -223,8 +199,13 @@ class Model(algorithm.Algorithm):
     if self.estimated_time_test:
       msg_est = "estimated time: {:.2e} sec.".format(self.estimated_time_test)
     print_log("Begin testing...", msg_est)
+
+    # Prepare input function for testing
+    test_input_fn = lambda: self.input_function(dataset, is_training=False)
+
     # Start testing (i.e. making prediction on test set)
     test_results = self.classifier.predict(input_fn=test_input_fn)
+
     predictions = [x['probabilities'] for x in test_results]
     has_same_length = (len({len(x) for x in predictions}) == 1)
     print_log("Asserting predictions have the same number of columns...")
@@ -247,41 +228,21 @@ class Model(algorithm.Algorithm):
 
   # Model functions that contain info on neural network architectures
   # Several model functions are to be implemented, for different domains
-
   def model_fn(self, features, labels, mode):
-    """Auto-Scaling CNN model that can be applied to all datasets.
+    """Auto-Scaling 3D CNN model.
 
-    3D CNN with pre-rescaling.
+    For more information on how to write a model function, see:
+      https://www.tensorflow.org/guide/custom_estimators#write_a_model_function
     """
-    row_count, col_count  = self.metadata_.get_matrix_size(0)
-    sequence_size = self.metadata_.get_sequence_size()
-    output_dim = self.metadata_.get_output_size()
-
-    # Input layer of shape [batch_size, sequence_size, row_count, col_count]
-    # Add last dimension for channels (only one channel)
-    input_layer = tf.reshape(features["x"],
-                             [-1, sequence_size, row_count, col_count, 1])
+    input_layer = features
 
     # Replace missing values by 0
     hidden_layer = tf.where(tf.is_nan(input_layer),
                            tf.zeros_like(input_layer), input_layer)
 
-    # Pre-rescaling: use 3D average pooling to rescale the 3D tensor such that
-    # each example has reasonable number of entries
-    REASONABLE_NUM_ENTRIES = 10000
-    # print_log("Will rescale all 3D tensors to have less than {} entries."\
-    #           .format(REASONABLE_NUM_ENTRIES))
-    while(get_num_entries(hidden_layer) > REASONABLE_NUM_ENTRIES):
-      shape = hidden_layer.shape
-      pool_size = (min(2, shape[1]), min(2, shape[2]), min(2, shape[3]))
-      hidden_layer= tf.layers.average_pooling3d(inputs=hidden_layer,
-                                                pool_size=pool_size,
-                                                strides=pool_size,
-                                                padding='valid',
-                                                data_format='channels_last')
-
-    # After pre-rescaling, repeatedly apply 3D CNN, followed by 3D max pooling
+    # Repeatedly apply 3D CNN, followed by 3D max pooling
     # until the hidden layer has reasonable number of entries
+    REASONABLE_NUM_ENTRIES = 1000
     num_filters = 16 # The number of filters is fixed
     while True:
       shape = hidden_layer.shape
@@ -299,10 +260,13 @@ class Model(algorithm.Algorithm):
         break
 
     hidden_layer = tf.layers.flatten(hidden_layer)
-    hidden_layer = tf.layers.dense(inputs=hidden_layer, units=64, activation=tf.nn.relu)
-    hidden_layer = tf.layers.dropout(inputs=hidden_layer, rate=0.15, training=mode == tf.estimator.ModeKeys.TRAIN)
+    hidden_layer = tf.layers.dense(inputs=hidden_layer,
+                                   units=64, activation=tf.nn.relu)
+    hidden_layer = tf.layers.dropout(
+        inputs=hidden_layer, rate=0.15,
+        training=mode == tf.estimator.ModeKeys.TRAIN)
 
-    logits = tf.layers.dense(inputs=hidden_layer, units=output_dim)
+    logits = tf.layers.dense(inputs=hidden_layer, units=self.output_dim)
     sigmoid_tensor = tf.nn.sigmoid(logits, name="sigmoid_tensor")
 
     predictions = {
@@ -337,6 +301,99 @@ class Model(algorithm.Algorithm):
     return tf.estimator.EstimatorSpec(
         mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
+  def input_function(self, dataset, is_training):
+    """Given `dataset` received by the method `self.train` or `self.test`,
+    prepare input to feed to model function.
+
+    For more information on how to write an input function, see:
+      https://www.tensorflow.org/guide/custom_estimators#write_an_input_function
+    """
+    dataset = dataset.map(lambda *x: (self.preprocess_tensor_4d(x[0]), x[1]))
+
+    if is_training:
+      # Shuffle input examples
+      dataset = dataset.shuffle(buffer_size=self.default_shuffle_buffer)
+      # Convert to RepeatDataset to train for several epochs
+      dataset = dataset.repeat()
+
+    # Set batch size
+    dataset = dataset.batch(batch_size=self.batch_size)
+
+    iterator = dataset.make_one_shot_iterator()
+    example, labels = iterator.get_next()
+    return example, labels
+
+  def preprocess_tensor_4d(self, tensor_4d):
+    """Preprocess a 4-D tensor (only when some dimensions are `None`, i.e.
+    non-fixed). The output tensor wil have fixed, known shape.
+
+    Args:
+      tensor_4d: A Tensor of shape
+          [sequence_size, row_count, col_count, num_channels]
+          where some dimensions might be `None`.
+    Returns:
+      A 4-D Tensor with fixed, known shape.
+    """
+    tensor_4d_shape = tensor_4d.shape
+    print_log("Tensor shape before preprocessing: {}".format(tensor_4d_shape))
+
+    if tensor_4d_shape[0] > 0 and tensor_4d_shape[0] < 10:
+      num_frames = tensor_4d_shape[0]
+    else:
+      num_frames = self.default_num_frames
+    if tensor_4d_shape[1] > 0:
+      new_row_count = tensor_4d_shape[1]
+    else:
+      new_row_count=self.default_image_size[0]
+    if tensor_4d_shape[2] > 0:
+      new_col_count = tensor_4d_shape[2]
+    else:
+      new_col_count=self.default_image_size[1]
+
+    if not tensor_4d_shape[0] > 0:
+      print_log("Detected that examples have variable sequence_size, will " +
+                "randomly crop a sequence with num_frames = " +
+                "{}".format(num_frames))
+      tensor_4d = crop_time_axis(tensor_4d, num_frames=num_frames)
+    if not tensor_4d_shape[1] > 0 or not tensor_4d_shape[2] > 0:
+      print_log("Detected that examples have variable space size, will " +
+                "resize space axes to (new_row_count, new_col_count) = " +
+                "{}".format((new_row_count, new_col_count)))
+      tensor_4d = resize_space_axes(tensor_4d,
+                                    new_row_count=new_row_count,
+                                    new_col_count=new_col_count)
+    print_log("Tensor shape after preprocessing: {}".format(tensor_4d.shape))
+    return tensor_4d
+
+  def get_steps_to_train(self, remaining_time_budget):
+    """Get number of steps for training according to `remaining_time_budget`.
+
+    The strategy is:
+      1. If no training is done before, train for 10 steps (ten batches);
+      2. Otherwise, estimate training time per step and time needed for test,
+         then compare to remaining time budget to compute a potential maximum
+         number of steps (max_steps) that can be trained within time budget;
+      3. Choose a number (steps_to_train) between 0 and max_steps and train for
+         this many steps. Double it each time.
+    """
+    if not remaining_time_budget: # This is never true in the competition anyway
+      remaining_time_budget = 1200 # if no time limit is given, set to 20min
+
+    if not self.estimated_time_per_step:
+      steps_to_train = 10
+    else:
+      if self.estimated_time_test:
+        tentative_estimated_time_test = self.estimated_time_test
+      else:
+        tentative_estimated_time_test = 50 # conservative estimation for test
+      max_steps = int((remaining_time_budget - tentative_estimated_time_test) / self.estimated_time_per_step)
+      max_steps = max(max_steps, 1)
+      if self.cumulated_num_tests < np.log(max_steps) / np.log(2):
+        steps_to_train = int(2 ** self.cumulated_num_tests) # Double steps_to_train after each test
+      else:
+        steps_to_train = 0
+    return steps_to_train
+
   def age(self):
     return time.time() - self.birthday
 
@@ -349,6 +406,7 @@ class Model(algorithm.Algorithm):
     batch_size = self.batch_size
     num_examples = self.metadata_.size()
     num_epochs = self.cumulated_num_steps * batch_size / num_examples
+    print_log("Model already trained for {} epochs.".format(num_epochs))
     return num_epochs > self.num_epochs_we_want_to_train # Train for at least certain number of epochs then stop
 
 def print_log(*content):
@@ -388,3 +446,49 @@ def get_num_entries(tensor):
   for i in tensor_shape[1:]:
     num_entries *= int(i)
   return num_entries
+
+def crop_time_axis(tensor_4d, num_frames, begin_index=None):
+  """Given a 4-D tensor, take a slice of length `num_frames` on its time axis.
+
+  Args:
+    tensor_4d: A Tensor of shape
+        [sequence_size, row_count, col_count, num_channels]
+    num_frames: An integer representing the resulted chunk (sequence) length
+    begin_index: The index of the beginning of the chunk. If `None`, chosen
+      randomly.
+  Returns:
+    A Tensor of sequence length `num_frames`, which is a chunk of `tensor_4d`.
+  """
+  # pad sequence if not long enough
+  pad_size = tf.maximum(num_frames - tf.shape(tensor_4d)[1], 0)
+  padded_tensor = tf.pad(tensor_4d, ((0, pad_size), (0, 0), (0, 0), (0, 0)))
+
+  # If not given, randomly choose the beginning index of frames
+  if not begin_index:
+    maxval = tf.shape(padded_tensor)[0] - num_frames + 1
+    begin_index = tf.random.uniform([1],
+                                    minval=0,
+                                    maxval=maxval,
+                                    dtype=tf.int32)
+    begin_index = tf.stack([begin_index[0], 0, 0, 0], name='begin_index')
+
+  sliced_tensor = tf.slice(padded_tensor,
+                           begin=begin_index,
+                           size=[num_frames, -1, -1, -1])
+
+  return sliced_tensor
+
+def resize_space_axes(tensor_4d, new_row_count, new_col_count):
+  """Given a 4-D tensor, resize space axes to have target size.
+
+  Args:
+    tensor_4d: A Tensor of shape
+        [sequence_size, row_count, col_count, num_channels].
+    new_row_count: An integer indicating the target row count.
+    new_col_count: An integer indicating the target column count.
+  Returns:
+    A Tensor of shape [sequence_size, target_row_count, target_col_count].
+  """
+  resized_images = tf.image.resize_images(tensor_4d,
+                                          size=(new_row_count, new_col_count))
+  return resized_images

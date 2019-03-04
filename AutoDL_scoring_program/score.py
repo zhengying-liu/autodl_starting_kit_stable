@@ -290,6 +290,11 @@ def clean_last_output(score_dir):
       print_log("Cleaning existing score_dir: {}".format(score_dir))
     shutil.rmtree(score_dir)
 
+def is_started(prediction_dir):
+    # Check if file start.txt exists
+    start_filepath = os.path.join(prediction_dir, 'start.txt')
+    return os.path.isfile(start_filepath)
+
 # =============================== MAIN ========================================
 
 if __name__ == "__main__":
@@ -348,6 +353,10 @@ if __name__ == "__main__":
     # Initialize detailed_results.html
     init_scores_html(detailed_results_filepath)
 
+    # Check if ingestion program is ready before starting
+    while(not is_started(prediction_dir)):
+      time.sleep(0.5)
+
     # Use the timestamp of 'detailed_results.html' as start time
     # This is more robust than using start = time.time()
     # especially when Docker image time is not synced with host time
@@ -399,10 +408,10 @@ if __name__ == "__main__":
         print_log("Current area under learning curve for {}: {:.4f}".format(basename, scores[solution_file]))
         # Update scores.html
         write_scores_html(score_dir)
-        # Use 'duration.txt' file to detect if ingestion program exits early
-        if os.path.isfile(duration_filepath):
-          print_log("Detected early stop of ingestion program. Stop scoring now.")
-          break
+      # Use 'duration.txt' file to detect if ingestion program exits early
+      if os.path.isfile(duration_filepath):
+        print_log("Detected early stop of ingestion program. Stop scoring now.")
+        break
 
     # Write one last time the detailed results page without auto-refreshing
     write_scores_html(score_dir, auto_refresh=False)
