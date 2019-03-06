@@ -87,7 +87,7 @@ class Model(algorithm.Algorithm):
     self.trained = False
     self.done_training = False
     # Critical number for early stopping
-    self.num_epochs_we_want_to_train = max(40, self.output_dim)
+    self.num_epochs_we_want_to_train = max(10, self.output_dim)
     # Depends on number of classes (output_dim)
     # see the function self.choose_to_stop_early() below for more details
 
