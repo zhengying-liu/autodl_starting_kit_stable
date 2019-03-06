@@ -406,7 +406,7 @@ class Model(algorithm.Algorithm):
     batch_size = self.batch_size
     num_examples = self.metadata_.size()
     num_epochs = self.cumulated_num_steps * batch_size / num_examples
-    print_log("Model already trained for {} epochs.".format(num_epochs))
+    print_log("Model already trained for {:.2f} epochs.".format(num_epochs))
     return num_epochs > self.num_epochs_we_want_to_train # Train for at least certain number of epochs then stop
 
 def print_log(*content):

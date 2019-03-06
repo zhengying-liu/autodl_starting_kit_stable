@@ -78,7 +78,14 @@ class AutoDLMetadata(object):
             self.metadata_.matrix_spec[bundle_index].col_count)
 
   def get_num_channels(self, bundle_index):
-    return  self.metadata_.matrix_spec[bundle_index].num_channels
+    num_channels = self.metadata_.matrix_spec[bundle_index].num_channels
+    if num_channels == -1: # Unknown or undefined num_channels
+      if self.is_compressed(bundle_index): # If is compressed image, set to 3
+        return 3
+      else:
+        return 1
+    else:
+      return num_channels
 
   def get_tensor_size(self, bundle_index):
     matrix_size = self.get_matrix_size(bundle_index)
@@ -189,11 +196,14 @@ class AutoDLDataset(object):
       key_compressed = self._feature_key(i, "compressed")
       if key_compressed in features:
         compressed_images = features[key_compressed].values
+        decompress_image_func =\
+          lambda x: dataset_utils.decompress_image(x, num_channels=num_channels)
         # `images` here is a 4D-tensor of shape [T, H, W, C], some of which
         # might be unknown
         images = tf.map_fn(
-            dataset_utils.decompress_image, compressed_images, dtype=tf.float32)
-        images.set_shape([sequence_size, row_count, col_count, 3]) # TODO: 3 to change to num_channels
+            decompress_image_func,
+            compressed_images, dtype=tf.float32)
+        images.set_shape([sequence_size, row_count, col_count, num_channels])
         sample.append(images)
 
       key_sparse_val = self._feature_key(i, "sparse_value")

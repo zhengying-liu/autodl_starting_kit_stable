@@ -38,7 +38,7 @@ def enforce_sequence_size(sample, sequence_size):
   return sample
 
 
-def decompress_image(compressed_image):
+def decompress_image(compressed_image, num_channels=3):
   """Decode a JPEG compressed image into a 3-D float Tensor.
 
   TODO(andreamichi): Test this function.
@@ -51,11 +51,11 @@ def decompress_image(compressed_image):
   # Note that the resulting image contains an unknown height and width
   # that is set dynamically by decode_jpeg. The returned image
   # is a 3-D Tensor of uint8 [0, 255]. The third dimension is the channel.
-  image = tf.image.decode_image(compressed_image, channels=3)
+  image = tf.image.decode_image(compressed_image, channels=num_channels)
 
   # Use float32 rather than uint8.
   image = tf.image.convert_image_dtype(image, dtype=tf.float32)
 
-  image.set_shape([None, None, 3])
+  image.set_shape([None, None, num_channels])
 
   return image

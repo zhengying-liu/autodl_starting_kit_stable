@@ -68,7 +68,7 @@ message MatrixSpec {
   optional bool is_sparse = 7 [deprecated = true];
 
   // Number of channels. This is useful for RGB or sensor data
-  optional int32 num_channels = 9 [default = 1];
+  optional int32 num_channels = 9 [default = -1];
 }
 
 message Matrix {
