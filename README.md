@@ -62,6 +62,13 @@ and select README.ipynb in the menu.
 ## How to prepare a ZIP file for submission
 Zip the contents of `AutoDL_sample_code_submission` (without the directory structure)
 ```
-zip mysubmission.zip AutoDL_sample_code_submission/*
+cd AutoDL_sample_code_submission/
+zip -r mysubmission.zip *
 ```
 then use the "Upload a Submission" button to make a submission to CodaLab.
+
+Tip: to look at what's in your submission zip file without unzipping it, you
+can do
+```
+unzip -l mysubmission.zip
+```
