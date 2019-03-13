@@ -31,15 +31,24 @@ class Algorithm(object):
     hopefully improve your model performance after each call.
 
     Args:
-      dataset: a `tf.data.Dataset` object. Each example is of the form
-            (matrix_bundle_0, matrix_bundle_1, ..., matrix_bundle_(N-1), labels)
-          where each matrix bundle is a tf.Tensor of shape
-            (sequence_size, row_count, col_count).
-          The variable `labels` is a tf.Tensor of shape
-            (output_dim,)
-          where `output_dim` represents number of classes of this
-          multilabel classification task. For the first version of AutoDL
-          challenge, the number of bundles `N` will be set to 1.
+      dataset: a `tf.data.Dataset` object. Each of its examples is of the form
+            (example, labels)
+          where `example` is a dense 4-D Tensor of shape
+            (sequence_size, row_count, col_count, num_channels)
+          and `labels` is a 1-D Tensor of shape
+            (output_dim,).
+          Here `output_dim` represents number of classes of this
+          multilabel classification task.
+
+          IMPORTANT: some of the dimensions of `example` might be `None`,
+          which means the shape on this dimension might be variable. In this
+          case, some preprocessing technique should be applied in order to
+          feed the training of a neural network. For example, if an image
+          dataset has `example` of shape
+            (1, None, None, 3)
+          then the images in this datasets may have different sizes. On could
+          apply resizing, cropping or padding in order to have a fixed size
+          input tensor.
 
       remaining_time_budget: time remaining to execute train(). The method
           should keep track of its execution time to avoid exceeding its time
@@ -48,16 +57,19 @@ class Algorithm(object):
     raise NotImplementedError("Algorithm class does not have any training.")
 
   def test(self, dataset, remaining_time_budget=None):
-    """Test this algorithm on the tensorflow |dataset|.
+    """Make predictions on the test set `dataset` (which is different from that
+    of the method `train`).
 
     Args:
-      Same as that of `train` method, except that the `labels` will be empty.
+      Same as that of `train` method, except that the `labels` will be empty
+          since this time `dataset` is a test set.
     Returns:
       predictions: A `numpy.ndarray` matrix of shape (sample_count, output_dim).
           here `sample_count` is the number of examples in this dataset as test
           set and `output_dim` is the number of labels to be predicted. The
           values should be binary or in the interval [0,1].
-          IMPORTANT: if returns None, this means that the algorithm
+
+          IMPORTANT: if returns `None`, this means that the algorithm
           chooses to stop training, and the whole train/test will stop. The
           performance of the last prediction will be used to compute area under
           learning curve.

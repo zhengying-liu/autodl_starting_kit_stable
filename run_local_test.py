@@ -37,7 +37,6 @@ def get_path_to_scoring_program(starting_kit_dir):
 
 
 def run_baseline(dataset_dir, code_dir):
-    print('Run baseline. Date: 02/07/2019.')
     # Current directory containing this script
     starting_kit_dir = os.path.dirname(os.path.realpath(__file__))
     path_ingestion = get_path_to_ingestion_program(starting_kit_dir)

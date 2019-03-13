@@ -29,22 +29,9 @@ import dataset_utils
 from data_pb2 import DataSpecification
 from data_pb2 import MatrixSpec
 
-# FLAGS = flags.FLAGS
-#
-# flags.DEFINE_string("dataset_dir", "",
-#                     "absolute path to data directory.")
-#
-# def metadata_filename(dataset_name):
-#   return os.path.join(FLAGS.dataset_dir, dataset_name,
-#                       "metadata.textproto")
-#
-#
-# def dataset_file_pattern(dataset_name):
-#   return os.path.join(FLAGS.dataset_dir, dataset_name, "sample*")
 
 def metadata_filename(dataset_name):
-  return os.path.join("", dataset_name,
-                      "metadata.textproto")
+  return os.path.join("", dataset_name, "metadata.textproto")
 
 
 def dataset_file_pattern(dataset_name):
@@ -229,12 +216,6 @@ class AutoDLDataset(object):
         tensor = tf.reshape(tensor,
                   [sequence_size, row_count, col_count, 1])
         sample.append(tensor)
-
-    # Enforce the Sample tensors to have the correct sequence length.
-    # if sequence_size > 1:
-    #   sample = [
-    #       dataset_utils.enforce_sequence_size(t, sequence_size) for t in sample
-    #   ]
 
     labels = tf.sparse_to_dense(
         contexts["label_index"].values, (self.metadata_.get_output_size(),),
