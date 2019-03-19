@@ -37,7 +37,7 @@ import numpy as np
 np.random.seed(42)
 
 class Model(algorithm.Algorithm):
-  """Construct auto-Scaling CNN for classification."""
+  """Fully connected neural network with no hidden layer."""
 
   def __init__(self, metadata):
     super(Model, self).__init__(metadata)
@@ -60,15 +60,9 @@ class Model(algorithm.Algorithm):
 
     model_fn = self.model_fn
 
-    # Directory to store checkpoints of model during training
-    model_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                             os.pardir,
-                             'checkpoints_' + self.dataset_name)
-
     # Classifier using model_fn (see below)
     self.classifier = tf.estimator.Estimator(
-      model_fn=model_fn,
-      model_dir=model_dir)
+      model_fn=model_fn)
 
     # Attributes for preprocessing
     self.default_image_size = (112,112)
@@ -129,7 +123,6 @@ class Model(algorithm.Algorithm):
       print_log("Not enough time remaining for training. " +
             "Estimated time for training per step: {:.2f}, "\
             .format(self.estimated_time_per_step) +
-            "and for test: {}, ".format(tentative_estimated_time_test) +
             "but remaining time budget is: {:.2f}. "\
             .format(remaining_time_budget) +
             "Skipping...")
