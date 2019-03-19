@@ -28,7 +28,9 @@ Then, at the shell, run:
 cd path_to/AutoDL_starting_kit_stable/
 docker run --memory=4g -it -u root -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl
 ```
-Make sure you use enough RAM (**at least 4GB**).
+Make sure you use enough RAM (**at least 4GB**). If the port 8888 is occupied,
+you can use other ports, e.g. 8899, and use instead the option `-p 8899:8888`.
+
 You will then be able to run the `ingestion program` (to produce predictions) and
 the `scoring program` (to evaluate your predictions) on toy sample data. In the AutoDL
 challenge, these two programs will run in parallel to give real-time feedback
