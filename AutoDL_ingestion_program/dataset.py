@@ -232,25 +232,53 @@ class AutoDLDataset(object):
                       dataset_file_pattern(self.dataset_name_) + "'.")
       # logging.info("Number of training files: %s.", str(len(files)))
       self.dataset_ = tf.data.TFRecordDataset(files)
+      
+  def get_class_labels(self):
+    """Get all class labels"""
+    # -- IG: inefficient, but... not needed very often
+    metadata=self.get_metadata()
+    label_to_index_map = metadata.get_label_to_index_map()
+    classes_list = [None] * len(label_to_index_map)
+    for label in label_to_index_map:
+      index = label_to_index_map[label]
+      classes_list[index] = label
+    return classes_list
 
   def get_nth_element(self, num):
     """Get n-th element in `autodl_dataset` using iterator."""
+    # -- IG: replaced previous 3d version
     dataset = self.get_dataset()
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
     with tf.Session() as sess:
       for _ in range(num+1):
-        tensor_3d, labels = sess.run(next_element)
-    return tensor_3d, labels
-
+        tensor_4d, labels = sess.run(next_element)
+    return tensor_4d, labels
+    
   def show_image(self, num):
-    """Visualize a image represented by `tensor_3d` in grayscale."""
-    tensor_3d, label_confidence_pairs = self.get_nth_element(num)
-    image = np.transpose(tensor_3d, (1, 2, 0))
-    plt.imshow(image)
-    plt.title('Labels: ' + str(label_confidence_pairs))
+    """Visualize a image represented by `tensor_4d` in RGB or grayscale."""
+    # -- IG: replaced previous 3d version
+    tensor_4d, label_confidence_pairs = self.get_nth_element(num)
+    num_channels = tensor_4d.shape[-1]
+    image = np.squeeze(tensor_4d[0])
+    # If the entries are float but in [0,255]
+    if not np.issubdtype(image.dtype, np.integer) and np.max(image) > 100:
+      image = image / 256
+    if num_channels == 1:
+      plt.imshow(image, cmap='gray')
+    else:
+      # if not num_channels == 3:
+      #   raise ValueError("Expected num_channels = 3 but got {} instead."\
+      #                    .format(num_channels))
+      plt.imshow(image)
+    labels = self.get_class_labels()
+    if labels:
+      lbl_list = [lbl for lbl, pos in zip(labels, label_confidence_pairs) if pos]      
+      plt.title('Label(s): ' + ' '.join(lbl_list))
+    else:
+      plt.title('Labels: ' + str(label_confidence_pairs))
     plt.show()
-    return plt
+    return plt    
 
 def main(argv):
   del argv  # Unused.
