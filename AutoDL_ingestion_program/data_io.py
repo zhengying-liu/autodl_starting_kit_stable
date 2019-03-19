@@ -2,15 +2,15 @@
 
 # Main contributors: Arthur Pesah and Isabelle Guyon, August-October 2014
 
-# ALL INFORMATION, SOFTWARE, DOCUMENTATION, AND DATA ARE PROVIDED "AS-IS". 
+# ALL INFORMATION, SOFTWARE, DOCUMENTATION, AND DATA ARE PROVIDED "AS-IS".
 # ISABELLE GUYON, CHALEARN, AND/OR OTHER ORGANIZERS OR CODE AUTHORS DISCLAIM
 # ANY EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR ANY PARTICULAR PURPOSE, AND THE
-# WARRANTY OF NON-INFRIGEMENT OF ANY THIRD PARTY'S INTELLECTUAL PROPERTY RIGHTS. 
-# IN NO EVENT SHALL ISABELLE GUYON AND/OR OTHER ORGANIZERS BE LIABLE FOR ANY SPECIAL, 
+# WARRANTY OF NON-INFRIGEMENT OF ANY THIRD PARTY'S INTELLECTUAL PROPERTY RIGHTS.
+# IN NO EVENT SHALL ISABELLE GUYON AND/OR OTHER ORGANIZERS BE LIABLE FOR ANY SPECIAL,
 # INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER ARISING OUT OF OR IN
-# CONNECTION WITH THE USE OR PERFORMANCE OF SOFTWARE, DOCUMENTS, MATERIALS, 
-# PUBLICATIONS, OR INFORMATION MADE AVAILABLE FOR THE CHALLENGE. 
+# CONNECTION WITH THE USE OR PERFORMANCE OF SOFTWARE, DOCUMENTS, MATERIALS,
+# PUBLICATIONS, OR INFORMATION MADE AVAILABLE FOR THE CHALLENGE.
 
 from __future__ import print_function
 from sys import getsizeof, stderr
@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import os
 import shutil
-from scipy.sparse import * # used in data_binary_sparse 
+from scipy.sparse import * # used in data_binary_sparse
 from zipfile import ZipFile, ZIP_DEFLATED
 from contextlib import closing
 import data_converter
@@ -56,7 +56,7 @@ def read_as_df(basename, type="train"):
         print('Reading '+ basename + '_' + type + ' from CSV')
         XY = pd.read_csv(csvfile)
         return XY
-        
+
     print('Reading '+ basename + '_' + type+ ' from AutoML format')
     feat_name = pd.read_csv(basename + '_feat.name', header=None)
     label_name = pd.read_csv(basename + '_label.name', header=None)
@@ -64,7 +64,7 @@ def read_as_df(basename, type="train"):
     [patnum, featnum] = X.shape
     print('Number of examples = %d' % patnum)
     print('Number of features = %d' % featnum)
-    
+
     XY=X
     Y=[]
     solution_file = basename + '_' + type + '.solution'
@@ -79,9 +79,9 @@ def read_as_df(basename, type="train"):
         numerical_target = Y.dot(label_range)                 # This is a column vector of dim patnum with numerical categories
         nominal_target = pd.Series(np.array(label_name)[numerical_target].ravel()) # Same with nominal categories
         XY = X.assign(target=nominal_target.values)          # Add the last column
-    
+
     return XY
-    
+
 # ================ Small auxiliary functions =================
 
 swrite = stderr.write
@@ -90,12 +90,12 @@ if (os.name == "nt"):
        filesep = '\\'
 else:
        filesep = '/'
-       
+
 def write_list(lst):
     ''' Write a list of items to stderr (for debug purposes)'''
     for item in lst:
-        swrite(item + "\n") 
-        
+        swrite(item + "\n")
+
 def print_dict(verbose, dct):
     ''' Write a dict to stderr (for debug purposes)'''
     if verbose:
@@ -106,7 +106,7 @@ def mkdir(d):
     ''' Create a new directory'''
     if not os.path.exists(d):
         os.makedirs(d)
-        
+
 def mvdir(source, dest):
     ''' Move a directory'''
     if os.path.exists(source):
@@ -116,22 +116,21 @@ def rmdir(d):
     ''' Remove an existingdirectory'''
     if os.path.exists(d):
         shutil.rmtree(d)
-        
+
 def vprint(mode, t):
     ''' Print to stdout, only if in verbose mode'''
     if(mode):
-            print(t) 
-        
+            print(t)
+
 # ================ Output prediction results and prepare code submission =================
-        
+
 def write(filename, predictions):
     ''' Write prediction scores in prescribed format'''
     with open(filename, "w") as output_file:
         for row in predictions:
             if type(row) is not np.ndarray and type(row) is not list:
                 row = [row]
-            for val in row:
-                output_file.write('{0:g} '.format(float(val)))
+            output_file.write(' '.join(['{0:g}'.format(val) for val in row]))
             output_file.write('\n')
 
 def zipdir(archivename, basedir):
@@ -141,19 +140,22 @@ def zipdir(archivename, basedir):
         for root, dirs, files in os.walk(basedir):
             #NOTE: ignore empty directories
             for fn in files:
-                if fn[-4:]!='.zip':
+                if not fn.endswith('.zip'):
                     absfn = os.path.join(root, fn)
-                    zfn = absfn[len(basedir)+len(os.sep):] #XXX: relative path
+                    zfn = absfn[len(basedir):] #XXX: relative path
+                    assert absfn[:len(basedir)] == basedir
+                    if zfn[0] == os.sep:
+                        zfn = zfn[1:]
                     z.write(absfn, zfn)
-                    
+
 # ================ Inventory input data and create data structure =================
-   
+
 def inventory_data(input_dir):
     ''' Inventory the datasets in the input directory and return them in alphabetical order'''
     # Assume first that there is a hierarchy dataname/dataname_train.data
     training_names = ls(os.path.join(input_dir, '*.data'))
     training_names = [ name.split('/')[-1] for name in training_names ]
-        
+
     ntr=len(training_names)
     if ntr==0:
         print('WARNING: Inventory data - No data file found')
@@ -161,14 +163,14 @@ def inventory_data(input_dir):
     training_names.sort()
     # check_dataset
     return training_names
-        
-   
+
+
 def check_dataset(dirname, name):
     ''' Check the test and valid files are in the directory, as well as the solution'''
     valid_file = os.path.join(dirname, name + '_valid.data')
     if not os.path.isfile(valid_file):
         print('No validation file for ' + name)
-        exit(1)  
+        exit(1)
     test_file = os.path.join(dirname, name + '_test.data')
     if not os.path.isfile(test_file):
         print('No test file for ' + name)
@@ -185,7 +187,7 @@ def data(filename, nbr_features=None, verbose = False):
     ''' The 2nd parameter makes possible a using of the 3 functions of data reading (data, data_sparse, data_binary_sparse) without changing parameters'''
     if verbose: print (np.array(data_converter.file_to_array(filename)))
     return np.array(data_converter.file_to_array(filename), dtype=float)
-            
+
 def data_sparse (filename, nbr_features):
     ''' This function takes as argument a file representing a sparse matrix
     sparse_matrix[i][j] = "a:b" means matrix[i][a] = basename and load it with the loadsvm load_svmlight_file
@@ -195,16 +197,16 @@ def data_sparse (filename, nbr_features):
 
 
 def data_binary_sparse (filename , nbr_features):
-    ''' This fuction takes as argument a file representing a sparse binary matrix 
+    ''' This fuction takes as argument a file representing a sparse binary matrix
     sparse_binary_matrix[i][j] = "a"and transforms it temporarily into file svmlibs format( <index2>:<value2>)
     to load it with the loadsvm load_svmlight_file
     '''
     return data_converter.file_to_libsvm (filename = filename, data_binary = True  , n_features = nbr_features)
 
 
- 
+
 # ================ Copy results from input to output ==========================
- 
+
 def copy_results(datanames, result_dir, output_dir, verbose):
     ''' This function copies all the [dataname.predict] results from result_dir to output_dir'''
     missing_files = []
@@ -212,26 +214,26 @@ def copy_results(datanames, result_dir, output_dir, verbose):
         try:
             missing = False
             test_files = ls(result_dir + "/" + basename + "*_test*.predict")
-            if len(test_files)==0: 
-                vprint(verbose, "[-] Missing 'test' result files for " + basename) 
+            if len(test_files)==0:
+                vprint(verbose, "[-] Missing 'test' result files for " + basename)
                 missing = True
             valid_files = ls(result_dir + "/" + basename + "*_valid*.predict")
-            if len(valid_files)==0: 
-                vprint(verbose, "[-] Missing 'valid' result files for " + basename) 
+            if len(valid_files)==0:
+                vprint(verbose, "[-] Missing 'valid' result files for " + basename)
                 missing = True
             if missing == False:
                 for f in test_files: copy2(f, output_dir)
                 for f in valid_files: copy2(f, output_dir)
                 vprint( verbose,  "[+] " + basename.capitalize() + " copied")
-            else: 
-                missing_files.append(basename)           
+            else:
+                missing_files.append(basename)
         except:
             vprint(verbose, "[-] Missing result files")
             return datanames
     return missing_files
 
 # ================ Display directory structure and code version (for debug purposes) =================
-      
+
 def show_dir(run_dir):
     print('\n=== Listing run dir ===')
     write_list(ls(run_dir))
@@ -239,8 +241,8 @@ def show_dir(run_dir):
     write_list(ls(run_dir + '/*/*'))
     write_list(ls(run_dir + '/*/*/*'))
     write_list(ls(run_dir + '/*/*/*/*'))
-      
-def show_io(input_dir, output_dir):     
+
+def show_io(input_dir, output_dir):
     swrite('\n=== DIRECTORIES ===\n\n')
     # Show this directory
     swrite("-- Current directory " + pwd() + ":\n")
@@ -248,7 +250,7 @@ def show_io(input_dir, output_dir):
     write_list(ls('./*'))
     write_list(ls('./*/*'))
     swrite("\n")
-    
+
     # List input and output directories
     swrite("-- Input directory " + input_dir + ":\n")
     write_list(ls(input_dir))
@@ -260,7 +262,7 @@ def show_io(input_dir, output_dir):
     write_list(ls(output_dir))
     write_list(ls(output_dir + '/*'))
     swrite("\n")
-        
+
     # write meta data to sdterr
     swrite('\n=== METADATA ===\n\n')
     swrite("-- Current directory " + pwd() + ":\n")
@@ -280,7 +282,7 @@ def show_io(input_dir, output_dir):
         swrite("\n")
     except:
         swrite("none\n");
-    
+
 def show_version():
     # Python version and library versions
     swrite('\n=== VERSIONS ===\n\n')
@@ -289,7 +291,7 @@ def show_version():
     # Give information on the version installed
     swrite("Versions of libraries installed:\n")
     map(swrite, sorted(["%s==%s\n" % (i.key, i.version) for i in lib()]))
- 
+
  # Compute the total memory size of an object in bytes
 
 def total_size(o, handlers={}, verbose=False):
@@ -342,4 +344,3 @@ def platform_score ( basename , mem_used ,n_estimators , time_spent , time_budge
         [basename,n_estimators,platform.system(), platform.machine(),platform.platform() , float("{0:.2f}".format(mem_used/1048576.0)) , str(psutil.cpu_count()) , float("{0:.2f}".format(time_spent)) ,    time_budget ]
         ]
         a.writerows(data)
-
