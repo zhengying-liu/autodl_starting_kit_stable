@@ -25,6 +25,7 @@ from sys import stderr
 from sys import version
 
 import numpy as np
+import pandas as pd
 import scipy as sp
 from sklearn import metrics
 from sklearn.preprocessing import *
@@ -53,7 +54,7 @@ else:
 
 def read_array(filename):
     ''' Read array and convert to 2d np arrays '''
-    array = np.loadtxt(filename)
+    array = pd.read_csv(filename, sep=' ', header=None).values
     if len(array.shape) == 1:
         array = array.reshape(-1, 1)
     return array
