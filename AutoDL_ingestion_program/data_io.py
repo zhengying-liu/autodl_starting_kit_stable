@@ -126,12 +126,14 @@ def vprint(mode, t):
 
 def write(filename, predictions):
     ''' Write prediction scores in prescribed format'''
-    with open(filename, "w") as output_file:
+    filename_temp = 'temp_prediction_file_' + str(np.random.randint(10000))
+    with open(filename_temp, "w") as output_file:
         for row in predictions:
             if type(row) is not np.ndarray and type(row) is not list:
                 row = [row]
             output_file.write(' '.join(['{0:g}'.format(float(val)) for val in row]))
             output_file.write('\n')
+    os.rename(filename_temp, filename)
 
 def zipdir(archivename, basedir):
     '''Zip directory, from J.F. Sebastian http://stackoverflow.com/'''
