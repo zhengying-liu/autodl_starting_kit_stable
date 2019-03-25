@@ -54,7 +54,7 @@ else:
 
 def read_array(filename):
     ''' Read array and convert to 2d np arrays '''
-    array = pd.read_csv(filename, sep=' ', header=None).values
+    array = np.loadtxt(filename)
     if len(array.shape) == 1:
         array = array.reshape(-1, 1)
     return array

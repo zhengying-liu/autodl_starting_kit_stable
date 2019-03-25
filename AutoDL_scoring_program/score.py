@@ -173,7 +173,8 @@ def draw_learning_curve(solution_file, prediction_files,
     timestamp = os.path.getmtime(prediction_file)
     prediction = read_array(prediction_file) # numpy array
     if (solution.shape != prediction.shape): raise ValueError(
-        "Bad prediction shape {}".format(prediction.shape))
+        "Bad prediction shape: {}. ".format(prediction.shape) +
+        "Expected shape: {}".format(solution.shape))
     score = scoring_function(solution, prediction)
     scores.append(score)
     timestamps.append(timestamp)

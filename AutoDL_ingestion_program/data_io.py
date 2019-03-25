@@ -130,7 +130,7 @@ def write(filename, predictions):
         for row in predictions:
             if type(row) is not np.ndarray and type(row) is not list:
                 row = [row]
-            output_file.write(' '.join(['{0:g}'.format(val) for val in row]))
+            output_file.write(' '.join(['{0:g}'.format(float(val)) for val in row]))
             output_file.write('\n')
 
 def zipdir(archivename, basedir):

@@ -37,7 +37,7 @@ import numpy as np
 np.random.seed(42)
 
 class Model(algorithm.Algorithm):
-  """Construct auto-Scaling CNN for classification."""
+  """Construct a model with 3D CNN for classification."""
 
   def __init__(self, metadata):
     super(Model, self).__init__(metadata)
