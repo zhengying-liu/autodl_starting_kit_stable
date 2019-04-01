@@ -37,6 +37,9 @@ import datetime
 # To compute area under learning curve
 from sklearn.metrics import auc
 
+# To compute ROC AUC metric
+from sklearn.metrics import roc_auc_score
+
 from libscores import read_array, sp, ls, mvmean
 
 # Convert images to Base64 to show in scores.html
@@ -120,8 +123,12 @@ def is_one_hot_vector(x, axis=None, keepdims=False):
   return np.logical_and(norm_1 == 1, norm_inf == 1)
 
 def is_multiclass(solution):
-  """Return if a task is a multi-class classification task, according to its
-  solution.
+  """Return if a task is a multi-class classification task, i.e.  each example
+  only has one label and thus each binary vector in `solution` only has
+  one '1' and all the rest components are '0'.
+
+  This function is useful when we want to compute metrics (e.g. accuracy) that
+  are only applicable for multi-class task (and not for multi-label task).
 
   Args:
     solution: a numpy.ndarray object of shape [num_examples, num_classes].
@@ -166,6 +173,7 @@ def draw_learning_curve(solution_file, prediction_files,
   """Draw learning curve for one task."""
   solution = read_array(solution_file) # numpy array
   scores = []
+  roc_auc_scores = []
   timestamps = []
   if is_multiclass_task:
     accuracy_scores = []
@@ -175,18 +183,26 @@ def draw_learning_curve(solution_file, prediction_files,
     if (solution.shape != prediction.shape): raise ValueError(
         "Bad prediction shape: {}. ".format(prediction.shape) +
         "Expected shape: {}".format(solution.shape))
-    score = scoring_function(solution, prediction)
-    scores.append(score)
+    scores.append(scoring_function(solution, prediction))
+    try: # if only one class present in y_true. ROC AUC score is not defined in that case.
+        roc_auc_scores.append(roc_auc_score(solution, prediction))
+    except:
+        roc_auc_scores.append(-1)
     timestamps.append(timestamp)
     if is_multiclass_task:
-      acc = accuracy(solution, prediction)
-      accuracy_scores.append(acc)
+      accuracy_scores.append(accuracy(solution, prediction))
   # Sort two lists according to timestamps
   sorted_pairs = sorted(zip(timestamps, scores))
+  roc_auc_sorted_pairs = sorted(zip(timestamps, roc_auc_scores))
+
   if len(timestamps) > 0:
-    latest_bac = sorted_pairs[-1][1]
-    print_log("BAC of the latest prediction is {:.4f}."\
-              .format(latest_bac))
+    latest_nbac = sorted_pairs[-1][1]
+    latest_roc_auc = roc_auc_sorted_pairs[-1][1]
+    print_log("NBAC (2 * BAC - 1) of the latest prediction is {:.4f}."\
+              .format(latest_nbac))
+    if not latest_roc_auc == -1:
+      print_log("ROC AUC of the latest prediction is {:.4f}."\
+                .format(latest_roc_auc))
     if is_multiclass_task:
       sorted_pairs_acc = sorted(zip(timestamps, accuracy_scores))
       latest_acc = sorted_pairs_acc[-1][1]

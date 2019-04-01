@@ -84,8 +84,16 @@ class Model(algorithm.Algorithm):
               "but will show some information on the dataset:")
     iterator = dataset.make_one_shot_iterator()
     example, labels = iterator.get_next()
+    sample_count = 0
+    with tf.Session() as sess:
+      while True:
+        try:
+          sess.run(labels)
+          sample_count += 1
+        except tf.errors.OutOfRangeError:
+          break
+    print_log("Number of training examples: {}".format(sample_count))
     print_log("Shape of example: {}".format(example.shape))
-    print_log("Shape of labels: {}".format(labels.shape))
     print_log("Number of classes: {}".format(labels.shape[0]))
     pass
 
@@ -121,6 +129,7 @@ class Model(algorithm.Algorithm):
           sample_count += 1
         except tf.errors.OutOfRangeError:
           break
+    print_log("Number of test examples: {}".format(sample_count))
     output_dim = self.metadata_.get_output_size()
     predictions = np.zeros((sample_count, output_dim))
     return predictions

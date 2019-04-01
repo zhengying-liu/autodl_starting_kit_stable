@@ -320,15 +320,15 @@ if __name__=="__main__" and debug_mode<4:
                   remaining_time_budget=remaining_time_budget)
           remaining_time_budget = start + time_budget - time.time()
           # Make predictions using the trained model
-          Y_test = M.test(D_test.get_dataset(),
+          Y_pred = M.test(D_test.get_dataset(),
                           remaining_time_budget=remaining_time_budget)
-          if Y_test is None: # Stop train/predict process if Y_test is None
+          if Y_pred is None: # Stop train/predict process if Y_pred is None
             break
           # Prediction files: adult.predict_0, adult.predict_1, ...
           filename_test = basename[:-5] + '.predict_' +\
             str(prediction_order_number)
           # Write predictions to output_dir
-          data_io.write(os.path.join(output_dir,filename_test), Y_test)
+          data_io.write(os.path.join(output_dir,filename_test), Y_pred)
           prediction_order_number += 1
           print_log("[+] Prediction success, time spent so far %5.2f sec" % (time.time() - start))
           remaining_time_budget = start + time_budget - time.time()
