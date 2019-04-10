@@ -25,6 +25,13 @@ def main(*argv):
       'Decal':'https://autodl.lri.fr/my/datasets/download/d72cba79-3051-4779-b624-e50335aad874',
       'Hammer':'https://autodl.lri.fr/my/datasets/download/e5a392c6-3bd1-4acf-8dcc-77bf89448616'
   }
+
+  def _HERE(*args):
+      h = os.path.dirname(os.path.realpath(__file__))
+      return os.path.abspath(os.path.join(h, *args))
+  starting_kit_dir = _HERE('.')
+  sample_date_dir = os.path.join(starting_kit_dir, 'AutoDL_sample_data')
+
   for dataset_name in dataset_names:
     msg = "Downloading data files and solution file for the dataset {}..."\
           .format(dataset_name)
@@ -34,22 +41,20 @@ def main(*argv):
     print('#'*(le+10) + '\n')
     data_url = data_urls[dataset_name]
     solution_url = solution_urls[dataset_name]
-    dataset_dir = "AutoDL_sample_data/" + dataset_name
+    dataset_dir = os.path.join(sample_date_dir, dataset_name)
     os.system('mkdir -p {}'.format(dataset_dir))
-    data_zip_file = "AutoDL_sample_data/{}/{}.data.zip"\
-                    .format(dataset_name, dataset_name)
-    solution_zip_file = "AutoDL_sample_data/{}/{}.solution.zip"\
-                        .format(dataset_name, dataset_name)
+    data_zip_file = os.path.join(dataset_dir, dataset_name + '.data.zip')
+    solution_zip_file = os.path.join(dataset_dir, dataset_name + '.solution.zip')
     os.system('wget -q --show-progress -c -N {} -O {}'\
               .format(data_url, data_zip_file))
     os.system('wget -q --show-progress -c -N {} -O {}'\
               .format(solution_url, solution_zip_file))
-    os.system('unzip -n -d AutoDL_sample_data/{} {}'\
-              .format(dataset_name, data_zip_file))
-    os.system('unzip -n -d AutoDL_sample_data/{} {}'\
-              .format(dataset_name, solution_zip_file))
+    os.system('unzip -n -d {} {}'\
+              .format(dataset_dir, data_zip_file))
+    os.system('unzip -n -d {} {}'\
+              .format(dataset_dir, solution_zip_file))
   print("\nFinished downloading 5 public datasets: 'Munster', 'Chucky','Pedro', 'Decal', 'Hammer'.")
-  print("Now you should find them under the directory 'AutoDL_sample_data/'.")
+  print("Now you should find them under the directory: {}".format(sample_date_dir))
 
 if __name__ == '__main__':
   main(sys.argv)
