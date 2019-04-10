@@ -3,10 +3,10 @@
 """Visualize examples and labels for given AutoDL dataset.
 
 Usage:
-  `python data_browser.py -dataset_dir=../AutoDL_sample_data/miniciao`
+  `python data_browser.py -dataset_dir=/AutoDL_sample_data/miniciao`
 
 Full usage:
-  `python data_browser.py -dataset_dir=../AutoDL_sample_data/miniciao -subset=test -num_examples=7`
+  `python data_browser.py -dataset_dir=/AutoDL_sample_data/miniciao -subset=test -num_examples=7`
 """
 
 import os
@@ -24,7 +24,7 @@ def _HERE(*args):
 tf.logging.set_verbosity(tf.logging.INFO)
 
 # STARTING_KIT_DIR = 'autodl/codalab_competition_bundle/AutoDL_starting_kit'
-RELATIVE_STARTING_KIT_DIR = '../'
+RELATIVE_STARTING_KIT_DIR = './'
 STARTING_KIT_DIR = _HERE(RELATIVE_STARTING_KIT_DIR)
 INGESTION_DIR = os.path.join(STARTING_KIT_DIR, 'AutoDL_ingestion_program')
 SCORING_DIR = os.path.join(STARTING_KIT_DIR, 'AutoDL_scoring_program')
@@ -237,7 +237,7 @@ def main(*argv):
   # Actually here dataset_dir should be dataset_dir since dataset_dir/ is the folder
   # that contains all datasets but dataset_dir is the folder that contains the
   # content of one single dataset
-  default_dataset_dir = _HERE('../AutoDL_sample_data/miniciao')
+  default_dataset_dir = _HERE('AutoDL_sample_data/miniciao')
   tf.flags.DEFINE_string('dataset_dir', default_dataset_dir,
                          "Path to dataset.")
   tf.flags.DEFINE_string('subset', 'train',
