@@ -85,7 +85,7 @@ Note that this can take a few minutes, depending on your connection.
 
 We provide a script for visualizing random examples of a given dataset:
 ```bash
-python AutoDL_ingestion_program/data_browser.py -dataset_dir=AutoDL_sample_data/miniciao
+python data_browser.py -dataset_dir=AutoDL_sample_data/miniciao
 ```
 You can change the dataset name `miniciao` to that of any other dataset
 (e.g. `Munster`, `Chucky`, `Pedro`, etc.).

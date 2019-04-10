@@ -48,7 +48,8 @@ def main(*argv):
               .format(dataset_name, data_zip_file))
     os.system('unzip -n -d AutoDL_sample_data/{} {}'\
               .format(dataset_name, solution_zip_file))
-    print("\nFinished downloading 5 public datasets.")
+  print("\nFinished downloading 5 public datasets: 'Munster', 'Chucky','Pedro', 'Decal', 'Hammer'.")
+  print("Now you should find them under the directory 'AutoDL_sample_data/'.")
 
 if __name__ == '__main__':
   main(sys.argv)
