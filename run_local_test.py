@@ -69,8 +69,9 @@ def run_baseline(dataset_dir, code_dir):
 
 if __name__ == '__main__':
     default_starting_kit_dir = os.path.abspath(os.path.join(_HERE()))
+    # The default dataset is 'miniciao' under the folder AutoDL_sample_data/
     default_dataset_dir = os.path.join(default_starting_kit_dir,
-                                       'AutoDL_sample_data')
+                                       'AutoDL_sample_data', 'miniciao')
     default_code_dir = os.path.join(default_starting_kit_dir,
                                        'AutoDL_sample_code_submission')
 
