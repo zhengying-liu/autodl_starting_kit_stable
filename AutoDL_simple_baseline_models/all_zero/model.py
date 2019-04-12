@@ -33,6 +33,7 @@ import algorithm
 
 # Other useful modules
 import datetime
+from tensorflow.python.client import device_lib
 
 class Model(algorithm.Algorithm):
   """Trivial example of valid model. Returns all-zero predictions."""
@@ -45,6 +46,17 @@ class Model(algorithm.Algorithm):
     """
     super(Model, self).__init__(metadata)
     self.no_more_training = False
+    # Show system info
+    print_log("System info ('uname -a'):")
+    os.system('uname -a')
+    # Show available devices
+    local_device_protos = device_lib.list_local_devices()
+    print_log("Available local devices:\n{}".format(local_device_protos))
+    # Show CUDA version
+    print_log("CUDA version:")
+    os.system('nvcc --version')
+    print_log("Output of the command line 'nvclock':")
+    os.system('nvclock')
 
   def train(self, dataset, remaining_time_budget=None):
     """Train this algorithm on the tensorflow |dataset|.
@@ -85,7 +97,7 @@ class Model(algorithm.Algorithm):
     iterator = dataset.make_one_shot_iterator()
     example, labels = iterator.get_next()
     sample_count = 0
-    with tf.Session() as sess:
+    with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
       while True:
         try:
           sess.run(labels)
@@ -122,7 +134,7 @@ class Model(algorithm.Algorithm):
     sample_count = 0
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
-    with tf.Session() as sess:
+    with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
       while True:
         try:
           sess.run(next_element)

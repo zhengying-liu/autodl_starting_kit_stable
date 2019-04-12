@@ -60,9 +60,13 @@ class Model(algorithm.Algorithm):
 
     model_fn = self.model_fn
 
+    # Change to True if you want to show device info at each operation
+    log_device_placement = False
+    session_config = tf.ConfigProto(log_device_placement=log_device_placement)
     # Classifier using model_fn (see below)
     self.classifier = tf.estimator.Estimator(
-      model_fn=model_fn)
+      model_fn=model_fn,
+      config=tf.estimator.RunConfig(session_config=session_config))
 
     # Attributes for preprocessing
     self.default_image_size = (112,112)

@@ -32,12 +32,20 @@ Then, at the shell, run:
 cd path_to/AutoDL_starting_kit_stable/
 docker run -it -u root -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl
 ```
+WARNING: The backend on CodaLab runs CUDA 10
+If you DON'T have Nvidia GPU support in your local environment, you
+need to install the CPU version of TensorFlow manually in your Docker container
+after running above command:
+```
+pip install tensorflow
+```
+
 Make sure you use enough RAM (**at least 4GB**). If the port 8888 is occupied,
 you can use other ports, e.g. 8899, and use instead the option `-p 8899:8888`.
 
 You will then be able to run the `ingestion program` (to produce predictions)
 and the `scoring program` (to evaluate your predictions) on toy sample data.
-In the AutoDL challenge, these two programs will run in parallel to give
+In the AutoCV/AutoDL challenge, these two programs will run in parallel to give
 real-time feedback (with learning curves). So we provide a Python script to
 simulate this behavior:
 ```
@@ -48,10 +56,14 @@ HTML page in `AutoDL_scoring_output/`.
 
 The full usage is
 ```
-python run_local_test.py -dataset_dir='./AutoDL_sample_data/miniciao' -code_dir='./AutoDL_simple_baseline_models/linear'
+python run_local_test.py -dataset_dir='AutoDL_sample_data/miniciao' -code_dir=AutoDL_simple_baseline_models/linear'
 ```
-You can change the argument `dataset_dir` to other AutoDL datasets (e.g. those
-you downloaded from **Get Data** section of the challenge). On the other hand,
+or
+```
+python run_local_test.py -dataset_dir='AutoDL_public_data/Munster' -code_dir='AutoDL_sample_code_submission'
+```
+You can change the argument `dataset_dir` to other datasets (e.g. the five
+public datasets we provide). On the other hand,
 you can also modify the directory containing your other sample code
 (`model.py`).
 
