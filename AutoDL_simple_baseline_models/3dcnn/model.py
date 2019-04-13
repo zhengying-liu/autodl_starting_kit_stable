@@ -26,6 +26,7 @@ and has nothing to do with the dataset metadata.
 
 import tensorflow as tf
 import os
+tf.logging.set_verbosity(tf.logging.ERROR)
 
 # Import the challenge algorithm (model) API from algorithm.py
 import algorithm

@@ -30,15 +30,21 @@ If you are new to docker, install docker from https://docs.docker.com/get-starte
 Then, at the shell, run:
 ```
 cd path_to/AutoDL_starting_kit_stable/
-docker run -it -u root -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl
+docker run -it -u root -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:gpu
 ```
-WARNING: The backend on CodaLab runs CUDA 10
-If you DON'T have Nvidia GPU support in your local environment, you
-need to install the CPU version of TensorFlow manually in your Docker container
-after running above command:
+The backend on CodaLab runs this Docker image, who has supports such as
+`tensorflow-gpu` (with TensorFlow 1.13.1), `torch=1.0.1`, `keras=2.2.4`,
+ CUDA 10, cuDNN 7.5, etc If you want to
+run local test with Nvidia GPU support, please make sure you have
+[installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
+
+**WARNING: If you DON'T have Nvidia GPU support** in your local environment, use
+the tag
 ```
-pip install tensorflow
+evariste/autodl:cpu
 ```
+instead of `evariste/autodl:gpu` otherwise you'll get errors when
+importing TensorFlow.
 
 Make sure you use enough RAM (**at least 4GB**). If the port 8888 is occupied,
 you can use other ports, e.g. 8899, and use instead the option `-p 8899:8888`.
@@ -78,7 +84,7 @@ like that:
 ```
 http://0.0.0.0:8888/?token=82e416e792c8f6a9f2194d2f4dbbd3660ad4ca29a4c58fe7
 ```
-and select tutorial.ipynb in the menu.
+and select `tutorial.ipynb` in the menu.
 
 ## Download public datasets
 We provide 5 public datasets for participants. They can use these datasets to:
