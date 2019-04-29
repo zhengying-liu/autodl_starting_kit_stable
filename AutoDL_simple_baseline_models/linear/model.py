@@ -37,6 +37,8 @@ import datetime
 import numpy as np
 np.random.seed(42)
 
+from sklearn.linear_model import LinearRegression
+
 class Model(algorithm.Algorithm):
   """Fully connected neural network with no hidden layer."""
 
@@ -77,18 +79,17 @@ class Model(algorithm.Algorithm):
     # Attributes for managing time budget
     # Cumulated number of training steps
     self.birthday = time.time()
-    self.total_train_time = 0
-    self.cumulated_num_steps = 0
-    self.estimated_time_per_step = None
-    self.total_test_time = 0
-    self.cumulated_num_tests = 0
-    self.estimated_time_test = None
-    self.trained = False
+    self.train_begin_times = []
+    self.test_begin_times = []
+    self.li_steps_to_train = []
+    self.li_cycle_length = []
+    self.li_estimated_time = []
+    self.time_estimator = LinearRegression()
     self.done_training = False
     # Critical number for early stopping
-    self.num_epochs_we_want_to_train = max(40, self.output_dim)
     # Depends on number of classes (output_dim)
     # see the function self.choose_to_stop_early() below for more details
+    self.num_epochs_we_want_to_train = max(40, self.output_dim)
 
   def train(self, dataset, remaining_time_budget=None):
     """Train this algorithm on the tensorflow |dataset|.
@@ -121,23 +122,31 @@ class Model(algorithm.Algorithm):
           should keep track of its execution time to avoid exceeding its time
           budget. If remaining_time_budget is None, no time budget is imposed.
     """
+    if self.done_training:
+      return
+
+    self.train_begin_times.append(time.time())
+    if len(self.train_begin_times) >= 2:
+      cycle_length = self.train_begin_times[-1] - self.train_begin_times[-2]
+      self.li_cycle_length.append(cycle_length)
+
     # Get number of steps to train according to some strategy
     steps_to_train = self.get_steps_to_train(remaining_time_budget)
 
     if steps_to_train <= 0:
-      print_log("Not enough time remaining for training. " +
-            "Estimated time for training per step: {:.2f}, "\
-            .format(self.estimated_time_per_step) +
-            "but remaining time budget is: {:.2f}. "\
-            .format(remaining_time_budget) +
-            "Skipping...")
+      print_log("Not enough time remaining for training + test. " +
+                "Skipping training...")
       self.done_training = True
     else:
       msg_est = ""
-      if self.estimated_time_per_step:
-        msg_est = "estimated time for this: " +\
-                  "{:.2f} sec.".format(steps_to_train * self.estimated_time_per_step)
-      print_log("Begin training for another {} steps...{}".format(steps_to_train, msg_est))
+      if len(self.li_estimated_time) > 0:
+        estimated_duration = self.li_estimated_time[-1]
+        estimated_end_time = time.ctime(int(time.time() + estimated_duration))
+        msg_est = "estimated time for training + test: " +\
+                  "{:.2f} sec, ".format(estimated_duration)
+        msg_est += "and should finish around {}.".format(estimated_end_time)
+      print_log("Begin training for another {} steps...{}"\
+                .format(steps_to_train, msg_est))
 
       # Prepare input function for training
       train_input_fn = lambda: self.input_function(dataset, is_training=True)
@@ -149,13 +158,10 @@ class Model(algorithm.Algorithm):
 
       # Update for time budget managing
       train_duration = train_end - train_start
-      self.total_train_time += train_duration
-      self.cumulated_num_steps += steps_to_train
-      self.estimated_time_per_step = self.total_train_time / self.cumulated_num_steps
+      self.li_steps_to_train.append(steps_to_train)
       print_log("{} steps trained. {:.2f} sec used. ".format(steps_to_train, train_duration) +\
-            "Now total steps trained: {}. ".format(self.cumulated_num_steps) +\
-            "Total time used for training: {:.2f} sec. ".format(self.total_train_time) +\
-            "Current estimated time per step: {:.2e} sec.".format(self.estimated_time_per_step))
+            "Now total steps trained: {}. ".format(sum(self.li_steps_to_train)) +\
+            "Total time used for training + test: {:.2f} sec. ".format(sum(self.li_cycle_length)))
 
   def test(self, dataset, remaining_time_budget=None):
     """Test this algorithm on the tensorflow |dataset|.
@@ -175,28 +181,13 @@ class Model(algorithm.Algorithm):
     if self.done_training:
       return None
 
-    # The following snippet of code intends to do:
-    # 0. Use the function self.choose_to_stop_early() to decide if stop the whole
-    #    train/predict process for next call
-    # 1. If there is time budget limit, and some testing has already been done,
-    #    but not enough remaining time for testing, then return None to stop
-    # 2. Otherwise: make predictions normally, and update some
-    #    variables for time management
+    self.test_begin_times.append(time.time())
+
     if self.choose_to_stop_early():
       print_log("Oops! Choose to stop early for next call!")
       self.done_training = True
     test_begin = time.time()
-    if remaining_time_budget and self.estimated_time_test and\
-        self.estimated_time_test > remaining_time_budget:
-      print_log("Not enough time for test. " +\
-            "Estimated time for test: {:.2e}, ".format(self.estimated_time_test) +\
-            "But remaining time budget is: {:.2f}. ".format(remaining_time_budget) +\
-            "Stop train/predict process by returning None.")
-      return None
-    msg_est = ""
-    if self.estimated_time_test:
-      msg_est = "estimated time: {:.2e} sec.".format(self.estimated_time_test)
-    print_log("Begin testing...", msg_est)
+    print_log("Begin testing...")
 
     # Prepare input function for testing
     test_input_fn = lambda: self.input_function(dataset, is_training=False)
@@ -205,19 +196,13 @@ class Model(algorithm.Algorithm):
     test_results = self.classifier.predict(input_fn=test_input_fn)
 
     predictions = [x['probabilities'] for x in test_results]
-    has_same_length = (len({len(x) for x in predictions}) == 1)
-    print_log("Asserting predictions have the same number of columns...")
-    assert(has_same_length)
     predictions = np.array(predictions)
     test_end = time.time()
     # Update some variables for time management
     test_duration = test_end - test_begin
-    self.total_test_time += test_duration
-    self.cumulated_num_tests += 1
-    self.estimated_time_test = self.total_test_time / self.cumulated_num_tests
-    print_log("[+] Successfully made one prediction. {:.2f} sec used. ".format(test_duration) +\
-          "Total time used for testing: {:.2f} sec. ".format(self.total_test_time) +\
-          "Current estimated time for test: {:.2e} sec.".format(self.estimated_time_test))
+    print_log("[+] Successfully made one prediction. {:.2f} sec used. "\
+              .format(test_duration) +\
+              "Duration used for test: {:2f}".format(test_duration))
     return predictions
 
   ##############################################################################
@@ -354,29 +339,37 @@ class Model(algorithm.Algorithm):
 
     The strategy is:
       1. If no training is done before, train for 10 steps (ten batches);
-      2. Otherwise, estimate training time per step and time needed for test,
-         then compare to remaining time budget to compute a potential maximum
-         number of steps (max_steps) that can be trained within time budget;
-      3. Choose a number (steps_to_train) between 0 and max_steps and train for
-         this many steps. Double it each time.
+      2. Otherwise, double the number of steps to train. Estimate the time
+         needed for training and test for this number of steps;
+      3. Compare to remaining time budget. If not enough, stop. Otherwise,
+         proceed to training/test and go to step 2.
     """
-    if not remaining_time_budget: # This is never true in the competition anyway
+    if remaining_time_budget is None: # This is never true in the competition anyway
       remaining_time_budget = 1200 # if no time limit is given, set to 20min
 
-    if not self.estimated_time_per_step:
-      steps_to_train = 10
+    # for more conservative estimation
+    remaining_time_budget = min(remaining_time_budget - 60,
+                                remaining_time_budget * 0.95)
+
+    if len(self.li_steps_to_train) == 0:
+      return 10
     else:
-      if self.estimated_time_test:
-        tentative_estimated_time_test = self.estimated_time_test
+      steps_to_train = self.li_steps_to_train[-1] * 2
+
+      # Estimate required time using linear regression
+      X = np.array(self.li_steps_to_train).reshape(-1, 1)
+      Y = np.array(self.li_cycle_length)
+      self.time_estimator.fit(X, Y)
+      X_test = np.array([steps_to_train]).reshape(-1, 1)
+      Y_pred = self.time_estimator.predict(X_test)
+
+      estimated_time = Y_pred[0]
+      self.li_estimated_time.append(estimated_time)
+
+      if estimated_time >= remaining_time_budget:
+        return 0
       else:
-        tentative_estimated_time_test = 50 # conservative estimation for test
-      max_steps = int((remaining_time_budget - tentative_estimated_time_test) / self.estimated_time_per_step)
-      max_steps = max(max_steps, 1)
-      if self.cumulated_num_tests < np.log(max_steps) / np.log(2):
-        steps_to_train = int(2 ** self.cumulated_num_tests) # Double steps_to_train after each test
-      else:
-        steps_to_train = 0
-    return steps_to_train
+        return steps_to_train
 
   def age(self):
     return time.time() - self.birthday
@@ -385,19 +378,11 @@ class Model(algorithm.Algorithm):
     """The criterion to stop further training (thus finish train/predict
     process).
     """
-    # return self.cumulated_num_tests > 10 # Limit to make 10 predictions
-    # return np.random.rand() < self.early_stop_proba
     batch_size = self.batch_size
     num_examples = self.metadata_.size()
-    num_epochs = self.cumulated_num_steps * batch_size / num_examples
-    print_log("Model already trained for {} epochs.".format(num_epochs))
+    num_epochs = sum(self.li_steps_to_train) * batch_size / num_examples
+    print_log("Model already trained for {:.4f} epochs.".format(num_epochs))
     return num_epochs > self.num_epochs_we_want_to_train # Train for at least certain number of epochs then stop
-
-def print_log(*content):
-  """Logging function. (could've also used `import logging`.)"""
-  now = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
-  print("MODEL INFO: " + str(now)+ " ", end='')
-  print(*content)
 
 def sigmoid_cross_entropy_with_logits(labels=None, logits=None):
   """Re-implementation of this function:
@@ -476,3 +461,9 @@ def resize_space_axes(tensor_4d, new_row_count, new_col_count):
   resized_images = tf.image.resize_images(tensor_4d,
                                           size=(new_row_count, new_col_count))
   return resized_images
+
+def print_log(*content):
+  """Logging function. (could've also used `import logging`.)"""
+  now = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
+  print("MODEL INFO: " + str(now)+ " ", end='')
+  print(*content)

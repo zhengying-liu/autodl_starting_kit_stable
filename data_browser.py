@@ -232,6 +232,17 @@ def get_tensor_shape(dataset_dir, bundle_index=0):
     metadata = data_browser.d_train.get_metadata()
     return metadata.get_tensor_shape(bundle_index)
 
+def get_size(dataset_dir):
+    data_browser = DataBrowser(dataset_dir)
+    num_train = data_browser.d_train.get_metadata().size()
+    num_test = data_browser.d_test.get_metadata().size()
+    return num_train, num_test
+
+def get_output_dim(dataset_dir):
+    data_browser = DataBrowser(dataset_dir)
+    output_dim = data_browser.d_train.get_metadata().get_output_size()
+    return output_dim
+
 def main(*argv):
   """Do you really need a docstring?"""
   # Actually here dataset_dir should be dataset_dir since dataset_dir/ is the folder
@@ -250,6 +261,10 @@ def main(*argv):
   dataset_dir = FLAGS.dataset_dir
   subset = FLAGS.subset
   num_examples = FLAGS.num_examples
+  num_train, num_test = get_size(dataset_dir)
+  print('num_train: {}\nnum_test: {}'.format(num_train, num_test))
+  print('tensor shape: {}'.format(get_tensor_shape(dataset_dir)))
+  print('output_dim: {}'.format(get_output_dim(dataset_dir)))
   show_examples(dataset_dir, num_examples=num_examples, subset=subset)
 
 

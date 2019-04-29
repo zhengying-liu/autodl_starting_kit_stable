@@ -21,10 +21,10 @@ Then you can begin participating to the AutoCV/AutoDL challenge by carefully rea
 To make your own submission to AutoCV/AutoDL challenge, you need to modify the
 file `model.py` in `AutoDL_sample_code_submission/`, which implements the logic
 of your algorithm. You can then test it on your local computer using Docker,
-in the exact same environment as on the CodaLab challenge plarform. Advanced
+in the exact same environment as on the CodaLab challenge platform. Advanced
 users can also run local test without Docker, if they install all the required
 packages,
-see the [Docker file](https://github.com/zhengying-liu/autodl/blob/master/docker/Dockerfile).
+see the [Dockerfile](https://github.com/zhengying-liu/autodl/blob/master/docker/Dockerfile).
 
 If you are new to docker, install docker from https://docs.docker.com/get-started/.
 Then, at the shell, run:
@@ -34,7 +34,7 @@ docker run -it -u root -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:gpu
 ```
 The backend on CodaLab runs this Docker image, who has supports such as
 `tensorflow-gpu` (with TensorFlow 1.13.1), `torch=1.0.1`, `keras=2.2.4`,
- CUDA 10, cuDNN 7.5, etc If you want to
+ CUDA 10, cuDNN 7.5, etc. If you want to
 run local test with Nvidia GPU support, please make sure you have
 [installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
 

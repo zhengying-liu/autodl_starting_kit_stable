@@ -1,4 +1,35 @@
-#!/usr/bin/env python
+################################################################################
+# Name:         Scoring Program
+# Author:       Zhengying Liu, Isabelle Guyon, Adrien Pavao, Zhen Xu
+# Update time:  Apr 29 2019
+# Usage: 		python score.py input_dir output_dir
+#           input_dir contains two subdirectories 'res' and 'ref'
+#                   'ref' contains e.g. adult.solution
+#                   'res' contains e.g. duration.txt, adult.predict_0, adult.predict_1, etc.
+#           output_dir should contain scores.txt, detailed_results.html
+
+VERSION = 'v20190429'
+DESCRIPTION =\
+"""This is the scoring program for AutoDL challenge. It takes the predictions
+made by ingestion program as input and compare to the solution file and produce
+a learning curve.
+Previous updates:
+20190429: [ZY] Remove useless code block such as the function is_started;
+               Better code layout.
+20190426.4: [ZY] Fix yaml format in scores.txt (add missing spaces)
+20190426.3: [ZY] Use f.write instead of yaml.dump to write scores.txt
+20190426.2: [ZY] Add logging info when writing scores and learning curves.
+20190426: [ZY] Now write to scores.txt whenever a new prediction is made. This
+               way, participants can still get a score when they exceed time
+               limit (but the submission's status will be marked as 'Failed').
+20190425: [ZY] Add ScoringError and IngestionError: throw error in these cases.
+               Participants will get 'Failed' for their error. But a score will
+               still by computed if applicable.
+               Improve importing order.
+               Log CPU usage.
+20190424: [ZY] Use logging instead of logger; remove start.txt checking.
+20190424: [ZY] Add version and description.
+20190419: [ZY] Judge if ingestion is alive by duration.txt; use logger."""
 
 # Scoring program for the AutoDL challenge
 # Isabelle Guyon and Zhengying Liu, ChaLearn, April 2018-
@@ -13,65 +44,68 @@
 # CONNECTION WITH THE USE OR PERFORMANCE OF SOFTWARE, DOCUMENTS, MATERIALS,
 # PUBLICATIONS, OR INFORMATION MADE AVAILABLE FOR THE CHALLENGE.
 
+
+################################################################################
+# User defined constants
+################################################################################
+
 # Time budget for ingestion program (and thus for scoring)
 # This is needed since scoring program is running all along with ingestion
 # program in parallel. So we need to know how long ingestion program will run.
 TIME_BUDGET = 7200
 
-# Some libraries and options
-import os
-import sys
-from sys import argv
-from os import getcwd as pwd
-import shutil
+# Redirect stardant output to live results page (detailed_results.html)
+# to have live output for debugging
+REDIRECT_STDOUT = False
 
-# Solve the Tkinter display issue of matplotlib.pyplot
-import matplotlib
-matplotlib.use('Agg')
-
-import matplotlib.pyplot as plt
-import numpy as np
-import time
-import datetime
-
-# To compute area under learning curve
-from sklearn.metrics import auc
-
-# To compute ROC AUC metric
-from sklearn.metrics import roc_auc_score
-
-from libscores import read_array, sp, ls, mvmean
-
-# Convert images to Base64 to show in scores.html
-import base64
-
-# Libraries for reconstructing the model
-
-def _HERE(*args):
-    h = os.path.dirname(os.path.realpath(__file__))
-    return os.path.join(h, *args)
-
-# Default I/O directories:
-root_dir = os.path.abspath(os.path.join(_HERE(), os.pardir))
-from os.path import join
-default_solution_dir = join(root_dir, "AutoDL_sample_data")
-default_prediction_dir = join(root_dir, "AutoDL_sample_result_submission")
-default_score_dir = join(root_dir, "AutoDL_scoring_output")
-
-# Debug flag 0: no debug, 1: show all scores, 2: also show version amd listing of dir
-debug_mode = 0
-verbose = True
-
-# Redirect stardant output to detailed_results.html to have live output
-# for debugging
-REDIRECT_STDOUT = False # TODO: to be changed for prod version
-from functools import partial
+# Verbosity level of logging.
+# Can be: NOTSET, DEBUG, INFO, WARNING, ERROR, CRITICAL
+verbosity_level = 'INFO'
 
 # Constant used for a missing score
 missing_score = -0.999999
 
-# Version number
-scoring_version = 1.0
+from functools import partial
+from libscores import read_array, sp, ls, mvmean
+from os import getcwd as pwd
+from os.path import join
+from sys import argv
+from sklearn.metrics import auc
+from sklearn.metrics import roc_auc_score
+import base64
+import datetime
+import logging
+import matplotlib; matplotlib.use('Agg') # Solve the Tkinter display issue of matplotlib.pyplot
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import psutil
+import sys
+import time
+import yaml
+
+# Set logging format to something like:
+# 2019-04-25 12:52:51 INFO score.py: <message>
+logging.basicConfig(
+    level=getattr(logging, verbosity_level),
+    format='%(asctime)s %(levelname)s %(filename)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+################################################################################
+# Functions
+################################################################################
+
+def _HERE(*args):
+    """Helper function for getting the current directory of the script."""
+    h = os.path.dirname(os.path.realpath(__file__))
+    return os.path.abspath(os.path.join(h, *args))
+
+# Default I/O directories:
+root_dir = _HERE(os.pardir)
+default_solution_dir = join(root_dir, "AutoDL_sample_data")
+default_prediction_dir = join(root_dir, "AutoDL_sample_result_submission")
+default_score_dir = join(root_dir, "AutoDL_scoring_output")
 
 # Metric used to compute the score of a point on the learning curve
 def autodl_bac(solution, prediction):
@@ -118,6 +152,7 @@ def autodl_bac(solution, prediction):
   return score
 
 def is_one_hot_vector(x, axis=None, keepdims=False):
+  """Check if a vector 'x' is one-hot (i.e. one entry is 1 and others 0)."""
   norm_1 = np.linalg.norm(x, ord=1, axis=axis, keepdims=keepdims)
   norm_inf = np.linalg.norm(x, ord=np.inf, axis=axis, keepdims=keepdims)
   return np.logical_and(norm_1 == 1, norm_inf == 1)
@@ -136,7 +171,7 @@ def is_multiclass(solution):
   return all(is_one_hot_vector(solution, axis=1))
 
 def accuracy(solution, prediction):
-  # assert(is_multiclass(solution))
+  """Get accuracy of 'prediction' w.r.t true labels 'solution'."""
   epsilon = 1e-15
   # normalize prediction
   prediction_normalized =\
@@ -154,6 +189,7 @@ def get_prediction_files(prediction_dir, basename, start):
   return prediction_files
 
 def get_fig_name(basename):
+  """Helper function for getting learning curve figure name."""
   fig_name = "learning-curve-" + basename + ".png"
   return fig_name
 
@@ -194,19 +230,21 @@ def draw_learning_curve(solution_file, prediction_files,
   # Sort two lists according to timestamps
   sorted_pairs = sorted(zip(timestamps, scores))
   roc_auc_sorted_pairs = sorted(zip(timestamps, roc_auc_scores))
+  time_used = -1
 
   if len(timestamps) > 0:
+    time_used = sorted_pairs[-1][0] - start
     latest_nbac = sorted_pairs[-1][1]
     latest_roc_auc = roc_auc_sorted_pairs[-1][1]
-    print_log("NBAC (2 * BAC - 1) of the latest prediction is {:.4f}."\
+    logging.info("NBAC (2 * BAC - 1) of the latest prediction is {:.4f}."\
               .format(latest_nbac))
     if not latest_roc_auc == -1:
-      print_log("ROC AUC of the latest prediction is {:.4f}."\
+      logging.info("ROC AUC of the latest prediction is {:.4f}."\
                 .format(latest_roc_auc))
     if is_multiclass_task:
       sorted_pairs_acc = sorted(zip(timestamps, accuracy_scores))
       latest_acc = sorted_pairs_acc[-1][1]
-      print_log("Accuracy of the latest prediction is {:.4f}."\
+      logging.info("Accuracy of the latest prediction is {:.4f}."\
                 .format(latest_acc))
   X = [t - start + 1 for t,_ in sorted_pairs] # Since X on log scale, set first x=1
   Y = [s for _,s in sorted_pairs]
@@ -248,69 +286,98 @@ def draw_learning_curve(solution_file, prediction_files,
   fig_name = get_fig_name(basename)
   path_to_fig = os.path.join(output_dir, fig_name)
   plt.savefig(path_to_fig)
-  return alc
+  return alc, time_used
 
 def area_under_learning_curve(X,Y):
   return auc(X,Y)
 
 def init_scores_html(detailed_results_filepath):
-  html_head = """<html><head> <meta http-equiv="refresh" content="5"> </head><body><pre>"""
+  html_head = '<html><head> <meta http-equiv="refresh" content="5"> ' +\
+              '</head><body><pre>'
   html_end = '</pre></body></html>'
   with open(detailed_results_filepath, 'a') as html_file:
     html_file.write(html_head)
-    html_file.write("Starting training process... <br> Please be patient. Learning curves will be generated when first predictions are made.")
+    html_file.write("Starting training process... <br> Please be patient. " +
+                    "Learning curves will be generated when first " +
+                    "predictions are made.")
     html_file.write(html_end)
 
-def write_scores_html(score_dir, auto_refresh=True):
+def write_scores_html(score_dir, auto_refresh=True, append=REDIRECT_STDOUT):
   filename = 'detailed_results.html'
   image_paths = sorted(ls(os.path.join(score_dir, '*.png')))
   if auto_refresh:
-    html_head = """<html><head> <meta http-equiv="refresh" content="5"> </head><body><pre>"""
+    html_head = '<html><head> <meta http-equiv="refresh" content="5"> ' +\
+                '</head><body><pre>'
   else:
     html_head = """<html><body><pre>"""
   html_end = '</pre></body></html>'
-  with open(os.path.join(score_dir, filename), 'w') as html_file:
-      # Automatic refreshing the page on file change using Live.js
+  if append:
+    mode = 'a'
+  else:
+    mode = 'w'
+  filepath = os.path.join(score_dir, filename)
+  with open(filepath, mode) as html_file:
       html_file.write(html_head)
       for image_path in image_paths:
         with open(image_path, "rb") as image_file:
           encoded_string = base64.b64encode(image_file.read())
           encoded_string = encoded_string.decode('utf-8')
-          s = '<img src="data:image/png;charset=utf-8;base64,%s"/>'%encoded_string
+          s = '<img src="data:image/png;charset=utf-8;base64,{}"/>'\
+              .format(encoded_string)
           html_file.write(s + '<br>')
       html_file.write(html_end)
+  logging.info("Wrote learning curve page to {}".format(filepath))
 
-def append_to_detailed_results_page(detailed_results_filepath, content):
-  with open(detailed_results_filepath, 'a') as html_file:
-    html_file.write(content)
+def write_score(score_dir, score, duration=-1):
+  """Write score and duration to score_dir/scores.txt"""
+  score_filename = os.path.join(score_dir, 'scores.txt')
+  with open(score_filename, 'w') as f:
+    f.write('score: ' + str(score) + '\n')
+    f.write('Duration: ' + str(duration) + '\n')
+  logging.debug("Wrote to score_filename={} with score={}, duration={}"\
+                .format(score_filename, score, duration))
 
-# List a tree structure of directories and files from startpath
 def list_files(startpath):
+    """List a tree structure of directories and files from startpath"""
     for root, dirs, files in os.walk(startpath):
         level = root.replace(startpath, '').count(os.sep)
         indent = ' ' * 4 * (level)
-        print_log('{}{}/'.format(indent, os.path.basename(root)))
+        logging.debug('{}{}/'.format(indent, os.path.basename(root)))
         subindent = ' ' * 4 * (level + 1)
         for f in files:
-            print_log('{}{}'.format(subindent, f))
+            logging.debug('{}{}'.format(subindent, f))
 
-def print_log(*content):
-  if verbose:
-    now = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
-    print("SCORING INFO: " + str(now)+ " ", end='')
-    print(*content)
+def get_ingestion_pid(prediction_dir):
+  """Get ingestion's process ID.
+  """
+  start_filepath = os.path.join(prediction_dir, 'start.txt')
+  with open(start_filepath, 'r') as f:
+    pid = int(f.readline().split(':')[-1])
+  return pid
 
-def clean_last_output(score_dir):
-  # Clean existing scoring output of possible last execution
-  if os.path.isdir(score_dir):
-    if verbose:
-      print_log("Cleaning existing score_dir: {}".format(score_dir))
-    shutil.rmtree(score_dir)
+def ingestion_is_alive(prediction_dir):
+  """Check if ingestion is still alive by checking if the file 'duration.txt'
+  if generated in the folder of predictions.
+  """
+  duration_filepath =  os.path.join(prediction_dir, 'duration.txt')
+  logging.debug("CPU usage: {}%".format(psutil.cpu_percent()))
+  logging.debug("Virtual memory: {}".format(psutil.virtual_memory()))
+  return not os.path.isfile(duration_filepath)
 
-def is_started(prediction_dir):
-    # Check if file start.txt exists
-    start_filepath = os.path.join(prediction_dir, 'start.txt')
-    return os.path.isfile(start_filepath)
+def is_process_alive(pid):
+  try:
+    os.kill(ingestion_pid, 0)
+  except OSError:
+    return False
+  else:
+    return True
+
+class IngestionError(Exception):
+  pass
+
+class ScoringError(Exception):
+  pass
+
 
 # =============================== MAIN ========================================
 
@@ -335,51 +402,49 @@ if __name__ == "__main__":
         score_dir = argv[2]
     elif len(argv) == 4:
         solution_dir = argv[1]
-        prediction_dir = argv[2]
-        score_dir = argv[3]
-
-        # TODO: to be tested and changed - 14/09
         prediction_dir = os.path.join(argv[2], 'res')
-        if REDIRECT_STDOUT:
-            sys.stdout = open(os.path.join(score_dir, 'detailed_results.html'), 'a')
-            # Flush changes to the file to have instant update
-            print = partial(print, flush=True)
+        score_dir = argv[3]
     else:
         swrite('\n*** WRONG NUMBER OF ARGUMENTS ***\n\n')
         exit(1)
 
-    clean_last_output(score_dir)
-
-    # if verbose: # For debugging
-    #     print_log("sys.argv = ", sys.argv)
-    #     list_files(os.path.abspath(os.path.join(sys.argv[0], os.pardir, os.pardir, os.pardir, os.pardir))) # /tmp/codalab/
-    #     with open(os.path.join(os.path.dirname(sys.argv[0]), 'metadata'), 'r') as f:
-    #       print_log("Content of the metadata file: ")
-    #       print_log(f.read())
-    #     print_log("Using solution_dir: " + solution_dir)
-    #     print_log("Using prediction_dir: " + prediction_dir)
-    #     print_log("Using score_dir: " + score_dir)
-    #     print_log("Scoring datetime:", the_date)
-
-
     # Create the output directory, if it does not already exist and open output files
     if not os.path.isdir(score_dir):
       os.mkdir(score_dir)
-    score_file = open(os.path.join(score_dir, 'scores.txt'), 'w')
     detailed_results_filepath = os.path.join(score_dir, 'detailed_results.html')
     # Initialize detailed_results.html
     init_scores_html(detailed_results_filepath)
 
-    # Check if ingestion program is ready before starting
-    while(not is_started(prediction_dir)):
-      time.sleep(0.5)
+    # Redirect standard output to detailed_results.html to have real-time
+    # feedback for debugging
+    if REDIRECT_STDOUT:
+      if not os.path.exists(score_dir):
+        os.makedirs(score_dir)
+      detailed_results_filepath = os.path.join(score_dir,
+                                               'detailed_results.html')
+      logging.basicConfig(filename=detailed_results_filepath)
+      logging.info("""<html><head> <meta http-equiv="refresh" content="5"> </head><body><pre>""")
+      logging.info("Redirecting standard output. " +
+                "Please check out output at {}."\
+                .format(detailed_results_filepath))
+
+    logging.info("Version: {}. Description: {}".format(VERSION, DESCRIPTION))
+
+    logging.debug("sys.argv = " + str(sys.argv))
+    with open(os.path.join(os.path.dirname(sys.argv[0]), 'metadata'), 'r') as f:
+      logging.debug("Content of the metadata file: ")
+      logging.debug(str(f.read()))
+    logging.debug("Using solution_dir: " + str(solution_dir))
+    logging.debug("Using prediction_dir: " + str(prediction_dir))
+    logging.debug("Using score_dir: " + str(score_dir))
+    logging.debug("Scoring datetime: " + str(the_date))
 
     # Use the timestamp of 'detailed_results.html' as start time
     # This is more robust than using start = time.time()
     # especially when Docker image time is not synced with host time
     start = os.path.getmtime(detailed_results_filepath)
     start_str = time.ctime(start)
-    print_log("Start scoring program at " + start_str)
+    logging.info("Start scoring program at " + start_str)
 
     # Get the metric
     scoring_function = autodl_bac
@@ -388,76 +453,86 @@ if __name__ == "__main__":
     # Get all the solution files from the solution directory
     solution_names = sorted(ls(os.path.join(solution_dir, '*.solution')))
     if len(solution_names) > 1: # Assert only one file is found
-      raise ValueError("Multiple solution files found: {}!".format(solution_names))
+      raise ValueError("Multiple solution files found: {}!"\
+                       .format(solution_names))
     solution_file = solution_names[0]
     solution = read_array(solution_file)
     is_multiclass_task = is_multiclass(solution)
     # Extract the dataset name from the file name
     basename = get_basename(solution_file)
     nb_preds = {x:0 for x in solution_names}
-    scores = {x:0 for x in solution_names}
+    scores = {x:missing_score for x in solution_names}
 
-    # Use 'duration.txt' file to detect if ingestion program exits early
-    duration_filepath =  os.path.join(prediction_dir, 'duration.txt')
+    scoring_success = True
 
-    # Begin scoring process, along with ingestion program
-    # Moniter training processes while time budget is not attained
-    known_prediction_files = {}
-    while(time.time() < start + TIME_BUDGET):
-      time.sleep(0.5)
-      # Give list of prediction files
-      prediction_files = get_prediction_files(prediction_dir, basename, start)
-      nb_preds_old = nb_preds[solution_file]
-      nb_preds_new = len(prediction_files)
-      if(nb_preds_new > nb_preds_old):
-        now = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
-        print_log("[+] New prediction found. Now number of predictions made =", nb_preds_new)
-        alc = 0
-        alc = draw_learning_curve(solution_file=solution_file,
-                                  prediction_files=prediction_files,
-                                  scoring_function=scoring_function,
-                                  output_dir=score_dir,
-                                  basename=basename,
-                                  start=start,
-                                  is_multiclass_task=is_multiclass_task)
-        nb_preds[solution_file] = nb_preds_new
-        scores[solution_file] = alc
-        print_log("Current area under learning curve for {}: {:.4f}".format(basename, scores[solution_file]))
-        # Update scores.html
-        write_scores_html(score_dir)
-      # Use 'duration.txt' file to detect if ingestion program exits early
-      if os.path.isfile(duration_filepath):
-        print_log("Detected early stop of ingestion program. Stop scoring now.")
-        break
+    try:
+      # Begin scoring process, along with ingestion program
+      # Moniter training processes while time budget is not attained
+      while(time.time() < start + TIME_BUDGET):
+        time.sleep(0.5)
+        # Give list of prediction files
+        prediction_files = get_prediction_files(prediction_dir, basename, start)
+        nb_preds_old = nb_preds[solution_file]
+        nb_preds_new = len(prediction_files)
+        if(nb_preds_new > nb_preds_old):
+          now = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
+          logging.info("[+] New prediction found. Now number of predictions " +
+                       "made = " + str(nb_preds_new))
+          alc = 0
+          alc, time_used = draw_learning_curve(solution_file=solution_file,
+                                    prediction_files=prediction_files,
+                                    scoring_function=scoring_function,
+                                    output_dir=score_dir,
+                                    basename=basename,
+                                    start=start,
+                                    is_multiclass_task=is_multiclass_task)
+          nb_preds[solution_file] = nb_preds_new
+          scores[solution_file] = alc
+          logging.info("Current area under learning curve for {}: {:.4f}"\
+                    .format(basename, scores[solution_file]))
+          # Update learning curve page (detailed_results.html)
+          write_scores_html(score_dir)
+          # Write score
+          write_score(score_dir, float(alc), duration=time_used)
+
+        if not ingestion_is_alive(prediction_dir):
+          logging.info("Detected ingestion program is not running. " +
+                       "Stop scoring now.")
+          break
+
+    except Exception as e:
+      scoring_success = False
+      logging.error("[-] Error occurred in scoring:\n" + str(e),
+                    exc_info=True)
 
     # Write one last time the detailed results page without auto-refreshing
     write_scores_html(score_dir, auto_refresh=False)
-
-    # Read the execution time and add it to score_file (scores.txt)
-    # Spend 30 seconds to search for a duration.txt file
-    duration = None
-    max_loop = 30
-    n_loop = 0
-    while n_loop < max_loop:
-        time.sleep(1)
-        if os.path.isfile(duration_filepath):
-            with open(duration_filepath, 'r') as f:
-              duration = float(f.read())
-            str_temp = "Duration: %0.6f\n" % duration
-            score_file.write(str_temp)
-            break
-        n_loop += 1
-
+    # Write score
     score = scores[solution_file]
-    score_file.write("score: {:.12f}\n".format(score))
-    score_file.close()
-    print_log("[+] Successfully finished scoring! " +\
-              "Duration used: {:.2f} sec. ".format(duration) +\
-              "The score of your algorithm on this task ({}) is: {:.6f}.".format(basename, score))
 
-    # Lots of debug stuff
-    if debug_mode > 1:
-        swrite('\n*** SCORING PROGRAM: PLATFORM SPECIFICATIONS ***\n\n')
-        show_platform()
-        show_io(prediction_dir, score_dir)
-        show_version(scoring_version)
+    # Read the execution time and add it to scores.txt
+    # Spend 30 seconds to search for a duration.txt file
+    # Use 'duration.txt' file to detect if ingestion program exits early
+    duration_filepath =  os.path.join(prediction_dir, 'duration.txt')
+    duration = None
+    if not os.path.isfile(duration_filepath) or not scoring_success:
+      logging.error("[-] Some error occurred in scoring program. " +
+                  "Please see output/error log of Scoring Step.")
+      raise ScoringError("Scoring Step terminated abnormally. " +
+                       "Please see output/error log of Scoring Step.")
+    else:
+      with open(duration_filepath, 'r') as f:
+        duration_dict = yaml.safe_load(f)
+      duration = duration_dict['Duration']
+      write_score(score_dir, score, duration=duration)
+
+      if duration_dict['Success'] == 0:
+        logging.error("[-] Some error occurred in ingestion program. " +
+                    "Please see output/error log of Ingestion Step.")
+        raise IngestionError("Ingestion Step terminated abnormally. " +
+                         "Please see output log of Ingestion Step.")
+      else:
+        logging.info("[+] Successfully finished scoring! " +\
+                  "Duration used: {:.2f} sec. ".format(duration) +\
+                  "The score of your algorithm on this task ({}) is: {:.6f}."\
+                  .format(basename, score))

@@ -17,11 +17,23 @@ python run_local_test.py
 ```
 """
 
-import tensorflow as tf
+# Verbosity level of logging.
+# Can be: NOTSET, DEBUG, INFO, WARNING, ERROR, CRITICAL
+verbosity_level = 'INFO'
+
+import logging
 import os
+import tensorflow as tf
 import time
+import shutil # for deleting a whole directory
 import webbrowser
 from multiprocessing import Process
+
+logging.basicConfig(
+    level=getattr(logging, verbosity_level),
+    format='%(asctime)s %(levelname)s %(filename)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 def _HERE(*args):
     h = os.path.dirname(os.path.realpath(__file__))
@@ -34,6 +46,16 @@ def get_path_to_ingestion_program(starting_kit_dir):
 def get_path_to_scoring_program(starting_kit_dir):
   return os.path.join(starting_kit_dir,
                       'AutoDL_scoring_program', 'score.py')
+
+def remove_dir(output_dir):
+  """Remove the directory `output_dir`.
+
+  This aims to clean existing output of last run of local test.
+  """
+  if os.path.isdir(output_dir):
+    logging.info("Cleaning existing output directory of last run: {}"\
+                .format(output_dir))
+    shutil.rmtree(output_dir)
 
 
 def run_baseline(dataset_dir, code_dir):
@@ -51,6 +73,12 @@ def run_baseline(dataset_dir, code_dir):
       os.system(command_scoring)
     ingestion_process = Process(name='ingestion', target=run_ingestion)
     scoring_process = Process(name='scoring', target=run_scoring)
+    ingestion_output_dir = os.path.join(starting_kit_dir,
+                                        'AutoDL_sample_result_submission')
+    score_dir = os.path.join(starting_kit_dir,
+                                        'AutoDL_scoring_output')
+    remove_dir(ingestion_output_dir)
+    remove_dir(score_dir)
     ingestion_process.start()
     scoring_process.start()
     detailed_results_page = os.path.join(starting_kit_dir,
