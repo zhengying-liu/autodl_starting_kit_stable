@@ -15,26 +15,22 @@
 
 """An example of code submission for the AutoDL challenge.
 
-It implements 3 compulsory methods: __init__, train, and test.
-model.py follows the template of the abstract class algorithm.py found
-in folder AutoDL_ingestion_program/.
+It implements 3 compulsory methods ('__init__', 'train' and 'test') and
+an attribute 'done_training' for indicating if the model will not proceed more
+training due to convergence or limited time budget.
 
 To create a valid submission, zip model.py together with other necessary files
-such as Python modules/packages, pre-trained weights. The final zip file should
-not exceed 300MB.
+such as Python modules/packages, pre-trained weights, etc. The final zip file
+should not exceed 300MB.
 """
 
-import tensorflow as tf
-import os
+import logging
 import numpy as np
+import os
+import sys
+import tensorflow as tf
 
-# Import the challenge algorithm (model) API from algorithm.py
-import algorithm
-
-# Other useful modules
-import datetime
-
-class Model(algorithm.Algorithm):
+class Model(object):
   """Trivial example of valid model. Returns all-zero predictions."""
 
   def __init__(self, metadata):
@@ -43,8 +39,8 @@ class Model(algorithm.Algorithm):
       metadata: an AutoDLMetadata object. Its definition can be found in
           AutoDL_ingestion_program/dataset.py
     """
-    super(Model, self).__init__(metadata)
-    self.no_more_training = False
+    self.done_training = False
+    self.metadata = metadata
 
   def train(self, dataset, remaining_time_budget=None):
     """Train this algorithm on the tensorflow |dataset|.
@@ -52,6 +48,18 @@ class Model(algorithm.Algorithm):
     This method will be called REPEATEDLY during the whole training/predicting
     process. So your `train` method should be able to handle repeated calls and
     hopefully improve your model performance after each call.
+
+    ****************************************************************************
+    ****************************************************************************
+    IMPORTANT: the loop of calling `train` and `test` will only run if
+        self.done_training = False
+      (the corresponding code can be found in ingestion.py, search
+      'M.done_training')
+      Otherwise, the loop will go on until the time budget is used up. Please
+      pay attention to set self.done_training = True when you think the model is
+      converged or when there is not enough time for next round of training.
+    ****************************************************************************
+    ****************************************************************************
 
     Args:
       dataset: a `tf.data.Dataset` object. Each of its examples is of the form
@@ -73,55 +81,53 @@ class Model(algorithm.Algorithm):
           apply resizing, cropping or padding in order to have a fixed size
           input tensor.
 
-      remaining_time_budget: time remaining to execute train(). The method
+      remaining_time_budget: a float, time remaining to execute train(). The method
           should keep track of its execution time to avoid exceeding its time
           budget. If remaining_time_budget is None, no time budget is imposed.
     """
-    if self.no_more_training:
-      return
-
-    print_log("This basic sample code doesn't do any training, ",
-              "but will show some information on the dataset:")
+    logger.info("This basic sample code doesn't do any training, " +
+                "but will retrieve some information on the dataset:")
     iterator = dataset.make_one_shot_iterator()
     example, labels = iterator.get_next()
-    print_log("Shape of example: {}".format(example.shape))
-    print_log("Shape of labels: {}".format(labels.shape))
-    print_log("Number of classes: {}".format(labels.shape[0]))
-    pass
+    sample_count = 0
+    with tf.Session() as sess:
+      while True:
+        try:
+          sess.run(labels)
+          sample_count += 1
+        except tf.errors.OutOfRangeError:
+          break
+    logger.info("Number of training examples: {}".format(sample_count))
+    logger.info("Shape of example: {}".format(example.shape))
+    logger.info("Number of classes: {}".format(labels.shape[0]))
+    assert self.metadata.get_output_size() == labels.shape[0]
+    self.done_training = True
 
   def test(self, dataset, remaining_time_budget=None):
     """Make predictions on the test set `dataset` (which is different from that
     of the method `train`).
 
     Args:
-      Same as that of `train` method, except that the `labels` will be empty
-          since this time `dataset` is a test set.
+      Same as that of `train` method, except that the labels will be empty
+          (all zeros) since this time `dataset` is a test set.
     Returns:
       predictions: A `numpy.ndarray` matrix of shape (sample_count, output_dim).
           here `sample_count` is the number of examples in this dataset as test
           set and `output_dim` is the number of labels to be predicted. The
           values should be binary or in the interval [0,1].
-
-          IMPORTANT: if returns `None`, this means that the algorithm
-          chooses to stop training, and the whole train/test will stop. The
-          performance of the last prediction will be used to compute area under
-          learning curve.
     """
-    if self.no_more_training:
-      return None
-
-    self.no_more_training = True
     sample_count = 0
     iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
+    example, labels = iterator.get_next()
     with tf.Session() as sess:
       while True:
         try:
-          sess.run(next_element)
+          sess.run(labels)
           sample_count += 1
         except tf.errors.OutOfRangeError:
           break
-    output_dim = self.metadata_.get_output_size()
+    logger.info("Number of test examples: {}".format(sample_count))
+    output_dim = self.metadata.get_output_size()
     predictions = np.zeros((sample_count, output_dim))
     return predictions
 
@@ -129,9 +135,24 @@ class Model(algorithm.Algorithm):
   #### Above 3 methods (__init__, train, test) should always be implemented ####
   ##############################################################################
 
-#### Can contain other functions too
-def print_log(*content):
-  """Logging function. (could've also used `import logging`.)"""
-  now = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
-  print("MODEL INFO: " + str(now)+ " ", end='')
-  print(*content)
+def get_logger(verbosity_level):
+  """Set logging format to something like:
+       2019-04-25 12:52:51,924 INFO model.py: <message>
+  """
+  logger = logging.getLogger(__file__)
+  logging_level = getattr(logging, verbosity_level)
+  logger.setLevel(logging_level)
+  formatter = logging.Formatter(
+    fmt='%(asctime)s %(levelname)s %(filename)s: %(message)s')
+  stdout_handler = logging.StreamHandler(sys.stdout)
+  stdout_handler.setLevel(logging_level)
+  stdout_handler.setFormatter(formatter)
+  stderr_handler = logging.StreamHandler(sys.stderr)
+  stderr_handler.setLevel(logging.WARNING)
+  stderr_handler.setFormatter(formatter)
+  logger.addHandler(stdout_handler)
+  logger.addHandler(stderr_handler)
+  logger.propagate = False
+  return logger
+
+logger = get_logger('INFO')

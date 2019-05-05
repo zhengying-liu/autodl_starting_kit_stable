@@ -36,7 +36,8 @@ The backend on CodaLab runs this Docker image, who has supports such as
 `tensorflow-gpu` (with TensorFlow 1.13.1), `torch=1.0.1`, `keras=2.2.4`,
  CUDA 10, cuDNN 7.5, etc. If you want to
 run local test with Nvidia GPU support, please make sure you have
-[installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
+[installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker) and use
+`nvidia-docker` instead of `docker` in above command.
 
 **WARNING: If you DON'T have Nvidia GPU support** in your local environment, use
 the tag
@@ -79,7 +80,7 @@ docker container, enter:
 ```
 jupyter-notebook --ip=0.0.0.0 --allow-root &
 ```
-Then cut and paste the URL containing your token. It should look like something
+Then copy and paste the URL containing your token. It should look like something
 like that:
 ```
 http://0.0.0.0:8888/?token=82e416e792c8f6a9f2194d2f4dbbd3660ad4ca29a4c58fe7
@@ -129,3 +130,7 @@ can do
 ```
 unzip -l mysubmission.zip
 ```
+
+## Contact us
+If you have any questions, please contact us via:
+<autodl@chalearn.org>

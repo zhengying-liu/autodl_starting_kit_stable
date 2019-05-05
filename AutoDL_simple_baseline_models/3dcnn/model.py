@@ -15,61 +15,46 @@
 
 """An example of code submission for the AutoDL challenge.
 
-It implements 3 compulsory methods: __init__, train, and test.
-model.py follows the template of the abstract class algorithm.py found
-in folder AutoDL_ingestion_program/.
+It implements 3 compulsory methods ('__init__', 'train' and 'test') and
+an attribute 'done_training' for indicating if the model will not proceed more
+training due to convergence or limited time budget.
 
-To create a valid submission, zip model.py together with an empty
-file called metadata (this just indicates your submission is a code submission
-and has nothing to do with the dataset metadata.
+To create a valid submission, zip model.py together with other necessary files
+such as Python modules/packages, pre-trained weights, etc. The final zip file
+should not exceed 300MB.
 """
 
-import tensorflow as tf
+import logging
+import numpy as np
 import os
+import sys
+import tensorflow as tf
+import time
+
+np.random.seed(42)
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-# Import the challenge algorithm (model) API from algorithm.py
-import algorithm
-
-# Utility packages
-import time
-import datetime
-import numpy as np
-np.random.seed(42)
-
-class Model(algorithm.Algorithm):
+class Model(object):
   """Construct a model with 3D CNN for classification."""
 
   def __init__(self, metadata):
-    super(Model, self).__init__(metadata)
-    self.output_dim = self.metadata_.get_output_size()
-    self.num_examples_train = self.metadata_.size()
-    # Get dataset name.
-    self.dataset_name = self.metadata_.get_dataset_name()\
-                          .split('/')[-2].split('.')[0]
-    print_log("The dataset {} has {} training examples and {} classes."\
-        .format(self.dataset_name, self.num_examples_train, self.output_dim))
+    """
+    Args:
+      metadata: an AutoDLMetadata object. Its definition can be found in
+          AutoDL_ingestion_program/dataset.py
+    """
+    self.done_training = False
+    self.metadata = metadata
 
-    # Boolean True if example have fixed size
-    row_count, col_count = self.metadata_.get_matrix_size(0)
-    self.fixed_matrix_size = row_count > 0 and col_count > 0
-    sequence_size = self.metadata_.get_sequence_size()
-    self.fixed_sequence_size = sequence_size > 0
-
+    # Get the output dimension, i.e. number of classes
+    self.output_dim = self.metadata.get_output_size()
     # Set batch size (for both training and testing)
     self.batch_size = 30
 
+    # Get model function from class method below
     model_fn = self.model_fn
-
-    # Directory to store checkpoints of model during training
-    model_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                             os.pardir,
-                             'checkpoints_' + self.dataset_name)
-
-    # Classifier using model_fn (see below)
-    self.classifier = tf.estimator.Estimator(
-      model_fn=model_fn,
-      model_dir=model_dir)
+    # Classifier using model_fn
+    self.classifier = tf.estimator.Estimator(model_fn=model_fn)
 
     # Attributes for preprocessing
     self.default_image_size = (112,112)
@@ -85,12 +70,8 @@ class Model(algorithm.Algorithm):
     self.total_test_time = 0
     self.cumulated_num_tests = 0
     self.estimated_time_test = None
-    self.trained = False
-    self.done_training = False
     # Critical number for early stopping
-    self.num_epochs_we_want_to_train = max(40, self.output_dim)
-    # Depends on number of classes (output_dim)
-    # see the function self.choose_to_stop_early() below for more details
+    self.num_epochs_we_want_to_train = 1
 
   def train(self, dataset, remaining_time_budget=None):
     """Train this algorithm on the tensorflow |dataset|.
@@ -98,6 +79,18 @@ class Model(algorithm.Algorithm):
     This method will be called REPEATEDLY during the whole training/predicting
     process. So your `train` method should be able to handle repeated calls and
     hopefully improve your model performance after each call.
+
+    ****************************************************************************
+    ****************************************************************************
+    IMPORTANT: the loop of calling `train` and `test` will only run if
+        self.done_training = False
+      (the corresponding code can be found in ingestion.py, search
+      'M.done_training')
+      Otherwise, the loop will go on until the time budget is used up. Please
+      pay attention to set self.done_training = True when you think the model is
+      converged or when there is not enough time for next round of training.
+    ****************************************************************************
+    ****************************************************************************
 
     Args:
       dataset: a `tf.data.Dataset` object. Each of its examples is of the form
@@ -126,20 +119,44 @@ class Model(algorithm.Algorithm):
     # Get number of steps to train according to some strategy
     steps_to_train = self.get_steps_to_train(remaining_time_budget)
 
+    # Count examples on training set
+    if not hasattr(self, 'num_examples_train'):
+      logger.info("Counting number of examples on train set.")
+      iterator = dataset.make_one_shot_iterator()
+      example, labels = iterator.get_next()
+      sample_count = 0
+      with tf.Session() as sess:
+        while True:
+          try:
+            sess.run(labels)
+            sample_count += 1
+          except tf.errors.OutOfRangeError:
+            break
+      self.num_examples_train = sample_count
+      logger.info("Finished counting. There are {} examples for training set."\
+                  .format(sample_count))
+
     if steps_to_train <= 0:
-      print_log("Not enough time remaining for training. " +
+      logger.info("Not enough time remaining for training. " +
             "Estimated time for training per step: {:.2f}, "\
             .format(self.estimated_time_per_step) +
             "but remaining time budget is: {:.2f}. "\
             .format(remaining_time_budget) +
             "Skipping...")
       self.done_training = True
+    elif self.choose_to_stop_early():
+      logger.info("The model chooses to stop further training because " +
+                  "The preset maximum number of epochs for training is " +
+                  "obtained: self.num_epochs_we_want_to_train = " +
+                  str(self.num_epochs_we_want_to_train))
+      self.done_training = True
     else:
       msg_est = ""
       if self.estimated_time_per_step:
-        msg_est = "estimated time for this: " +\
-                  "{:.2f} sec.".format(steps_to_train * self.estimated_time_per_step)
-      print_log("Begin training for another {} steps...{}".format(steps_to_train, msg_est))
+        msg_est = "estimated time for this: {:.2f} sec."\
+                  .format(steps_to_train * self.estimated_time_per_step)
+      logger.info("Begin training for another {} steps...{}"\
+                  .format(steps_to_train, msg_est))
 
       # Prepare input function for training
       train_input_fn = lambda: self.input_function(dataset, is_training=True)
@@ -154,7 +171,7 @@ class Model(algorithm.Algorithm):
       self.total_train_time += train_duration
       self.cumulated_num_steps += steps_to_train
       self.estimated_time_per_step = self.total_train_time / self.cumulated_num_steps
-      print_log("{} steps trained. {:.2f} sec used. ".format(steps_to_train, train_duration) +\
+      logger.info("{} steps trained. {:.2f} sec used. ".format(steps_to_train, train_duration) +\
             "Now total steps trained: {}. ".format(self.cumulated_num_steps) +\
             "Total time used for training: {:.2f} sec. ".format(self.total_train_time) +\
             "Current estimated time per step: {:.2e} sec.".format(self.estimated_time_per_step))
@@ -169,36 +186,26 @@ class Model(algorithm.Algorithm):
           here `sample_count` is the number of examples in this dataset as test
           set and `output_dim` is the number of labels to be predicted. The
           values should be binary or in the interval [0,1].
-          IMPORTANT: if returns None, this means that the algorithm
-          chooses to stop training, and the whole train/test will stop. The
-          performance of the last prediction will be used to compute area under
-          learning curve.
     """
-    if self.done_training:
-      return None
-
-    # The following snippet of code intends to do:
-    # 0. Use the function self.choose_to_stop_early() to decide if stop the whole
-    #    train/predict process for next call
-    # 1. If there is time budget limit, and some testing has already been done,
-    #    but not enough remaining time for testing, then return None to stop
-    # 2. Otherwise: make predictions normally, and update some
-    #    variables for time management
-    if self.choose_to_stop_early():
-      print_log("Oops! Choose to stop early for next call!")
-      self.done_training = True
     test_begin = time.time()
-    if remaining_time_budget and self.estimated_time_test and\
-        self.estimated_time_test > remaining_time_budget:
-      print_log("Not enough time for test. " +\
-            "Estimated time for test: {:.2e}, ".format(self.estimated_time_test) +\
-            "But remaining time budget is: {:.2f}. ".format(remaining_time_budget) +\
-            "Stop train/predict process by returning None.")
-      return None
-    msg_est = ""
-    if self.estimated_time_test:
-      msg_est = "estimated time: {:.2e} sec.".format(self.estimated_time_test)
-    print_log("Begin testing...", msg_est)
+    logger.info("Begin testing... ")
+
+    # Count examples on test set
+    if not hasattr(self, 'num_examples_test'):
+      logger.info("Counting number of examples on test set.")
+      iterator = dataset.make_one_shot_iterator()
+      example, labels = iterator.get_next()
+      sample_count = 0
+      with tf.Session() as sess:
+        while True:
+          try:
+            sess.run(labels)
+            sample_count += 1
+          except tf.errors.OutOfRangeError:
+            break
+      self.num_examples_test = sample_count
+      logger.info("Finished counting. There are {} examples for test set."\
+                  .format(sample_count))
 
     # Prepare input function for testing
     test_input_fn = lambda: self.input_function(dataset, is_training=False)
@@ -207,9 +214,6 @@ class Model(algorithm.Algorithm):
     test_results = self.classifier.predict(input_fn=test_input_fn)
 
     predictions = [x['probabilities'] for x in test_results]
-    has_same_length = (len({len(x) for x in predictions}) == 1)
-    print_log("Asserting predictions have the same number of columns...")
-    assert(has_same_length)
     predictions = np.array(predictions)
     test_end = time.time()
     # Update some variables for time management
@@ -217,7 +221,7 @@ class Model(algorithm.Algorithm):
     self.total_test_time += test_duration
     self.cumulated_num_tests += 1
     self.estimated_time_test = self.total_test_time / self.cumulated_num_tests
-    print_log("[+] Successfully made one prediction. {:.2f} sec used. ".format(test_duration) +\
+    logger.info("Successfully made one prediction. {:.2f} sec used. ".format(test_duration) +\
           "Total time used for testing: {:.2f} sec. ".format(self.total_test_time) +\
           "Current estimated time for test: {:.2e} sec.".format(self.estimated_time_test))
     return predictions
@@ -335,7 +339,7 @@ class Model(algorithm.Algorithm):
       A 4-D Tensor with fixed, known shape.
     """
     tensor_4d_shape = tensor_4d.shape
-    print_log("Tensor shape before preprocessing: {}".format(tensor_4d_shape))
+    logger.info("Tensor shape before preprocessing: {}".format(tensor_4d_shape))
 
     if tensor_4d_shape[0] > 0 and tensor_4d_shape[0] < 10:
       num_frames = tensor_4d_shape[0]
@@ -351,18 +355,18 @@ class Model(algorithm.Algorithm):
       new_col_count=self.default_image_size[1]
 
     if not tensor_4d_shape[0] > 0:
-      print_log("Detected that examples have variable sequence_size, will " +
+      logger.info("Detected that examples have variable sequence_size, will " +
                 "randomly crop a sequence with num_frames = " +
                 "{}".format(num_frames))
       tensor_4d = crop_time_axis(tensor_4d, num_frames=num_frames)
     if not tensor_4d_shape[1] > 0 or not tensor_4d_shape[2] > 0:
-      print_log("Detected that examples have variable space size, will " +
+      logger.info("Detected that examples have variable space size, will " +
                 "resize space axes to (new_row_count, new_col_count) = " +
                 "{}".format((new_row_count, new_col_count)))
       tensor_4d = resize_space_axes(tensor_4d,
                                     new_row_count=new_row_count,
                                     new_col_count=new_col_count)
-    print_log("Tensor shape after preprocessing: {}".format(tensor_4d.shape))
+    logger.info("Tensor shape after preprocessing: {}".format(tensor_4d.shape))
     return tensor_4d
 
   def get_steps_to_train(self, remaining_time_budget):
@@ -401,19 +405,11 @@ class Model(algorithm.Algorithm):
     """The criterion to stop further training (thus finish train/predict
     process).
     """
-    # return self.cumulated_num_tests > 10 # Limit to make 10 predictions
-    # return np.random.rand() < self.early_stop_proba
     batch_size = self.batch_size
-    num_examples = self.metadata_.size()
+    num_examples = self.num_examples_train
     num_epochs = self.cumulated_num_steps * batch_size / num_examples
-    print_log("Model already trained for {} epochs.".format(num_epochs))
+    logger.info("Model already trained for {} epochs.".format(num_epochs))
     return num_epochs > self.num_epochs_we_want_to_train # Train for at least certain number of epochs then stop
-
-def print_log(*content):
-  """Logging function. (could've also used `import logging`.)"""
-  now = datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")
-  print("MODEL INFO: " + str(now)+ " ", end='')
-  print(*content)
 
 def sigmoid_cross_entropy_with_logits(labels=None, logits=None):
   """Re-implementation of this function:
@@ -492,3 +488,25 @@ def resize_space_axes(tensor_4d, new_row_count, new_col_count):
   resized_images = tf.image.resize_images(tensor_4d,
                                           size=(new_row_count, new_col_count))
   return resized_images
+
+def get_logger(verbosity_level):
+  """Set logging format to something like:
+       2019-04-25 12:52:51,924 INFO model.py: <message>
+  """
+  logger = logging.getLogger(__file__)
+  logging_level = getattr(logging, verbosity_level)
+  logger.setLevel(logging_level)
+  formatter = logging.Formatter(
+    fmt='%(asctime)s %(levelname)s %(filename)s: %(message)s')
+  stdout_handler = logging.StreamHandler(sys.stdout)
+  stdout_handler.setLevel(logging_level)
+  stdout_handler.setFormatter(formatter)
+  stderr_handler = logging.StreamHandler(sys.stderr)
+  stderr_handler.setLevel(logging.WARNING)
+  stderr_handler.setFormatter(formatter)
+  logger.addHandler(stdout_handler)
+  logger.addHandler(stderr_handler)
+  logger.propagate = False
+  return logger
+
+logger = get_logger('INFO')
