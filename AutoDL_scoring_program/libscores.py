@@ -59,6 +59,15 @@ def read_array(filename):
         array = array.reshape(-1, 1)
     return array
 
+def list_files(startpath):
+    """List a tree structure of directories and files from startpath"""
+    for root, dirs, files in os.walk(startpath):
+        level = root.replace(startpath, '').count(os.sep)
+        indent = ' ' * 4 * (level)
+        logger.debug('{}{}/'.format(indent, os.path.basename(root)))
+        subindent = ' ' * 4 * (level + 1)
+        for f in files:
+            logger.debug('{}{}'.format(subindent, f))
 
 def sanitize_array(array):
     ''' Replace NaN and Inf (there should not be any!)'''

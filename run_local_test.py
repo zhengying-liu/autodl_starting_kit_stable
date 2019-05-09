@@ -82,7 +82,7 @@ def get_basename(path):
     path = path[:-1]
   return path.split(os.sep)[-1]
 
-def run_baseline(dataset_dir, code_dir, time_budget):
+def run_baseline(dataset_dir, code_dir, time_budget=7200):
   # Current directory containing this script
   starting_kit_dir = os.path.dirname(os.path.realpath(__file__))
   path_ingestion = get_path_to_ingestion_program(starting_kit_dir)

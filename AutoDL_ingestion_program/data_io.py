@@ -127,6 +127,7 @@ def vprint(mode, t):
 def write(filename, predictions):
     ''' Write prediction scores in prescribed format'''
     filename_temp = 'temp_prediction_file_' + str(np.random.randint(10000))
+    filename_temp = os.path.join(os.path.dirname(filename), filename_temp)
     with open(filename_temp, "w") as output_file:
         for row in predictions:
             if type(row) is not np.ndarray and type(row) is not list:

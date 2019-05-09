@@ -1,12 +1,12 @@
 ################################################################################
 # Name:         Ingestion Program
 # Author:       Zhengying Liu, Isabelle Guyon, Adrien Pavao, Zhen Xu
-# Update time:  5 May 2019
+# Update time:  7 May 2019
 # Usage: python ingestion.py --dataset_dir=<dataset_dir> --output_dir=<prediction_dir> --ingestion_program_dir=<ingestion_program_dir> --code_dir=<code_dir> --score_dir=<score_dir>
 
 # AS A PARTICIPANT, DO NOT MODIFY THIS CODE.
 
-VERSION = 'v20190505'
+VERSION = 'v20190508'
 DESCRIPTION =\
 """This is the "ingestion program" written by the organizers. It takes the
 code written by participants (with `model.py`) and one dataset as input,
@@ -14,6 +14,8 @@ run the code on the dataset and produce predictions on test set. For more
 information on the code/directory structure, please see comments in this
 code (ingestion.py) and the README file of the starting kit.
 Previous updates:
+20190508: [ZY] Add time_budget to 'start.txt'
+20190507: [ZY] Write timestamps to 'start.txt'
 20190505: [ZY] Use argparse to parse directories AND time budget;
                Rename input_dir to dataset_dir;
                Rename submission_dir to code_dir;
@@ -128,7 +130,8 @@ def _HERE(*args):
   h = os.path.dirname(os.path.realpath(__file__))
   return os.path.abspath(os.path.join(h, *args))
 
-def write_start_file(output_dir, start_time):
+def write_start_file(output_dir, start_time=None, time_budget=None,
+                     task_name=None):
   """Create start file 'start.txt' in `output_dir` with ingestion's pid and
   start time.
   """
@@ -136,9 +139,19 @@ def write_start_file(output_dir, start_time):
   start_filename =  'start.txt'
   start_filepath = os.path.join(output_dir, start_filename)
   with open(start_filepath, 'w') as f:
-    f.write('ingestion_pid: ' + str(ingestion_pid) + '\n')
-    f.write('start_time: ' + str(start_time) + '\n')
+    f.write('ingestion_pid: {}\n'.format(ingestion_pid))
+    f.write('task_name: {}\n'.format(task_name))
+    f.write('time_budget: {}\n'.format(time_budget))
+    f.write('start_time: {}\n'.format(start_time))
   logger.debug("Finished writing 'start.txt' file.")
+
+def write_timestamp(output_dir, predict_idx, timestamp):
+  start_filename =  'start.txt'
+  start_filepath = os.path.join(output_dir, start_filename)
+  with open(start_filepath, 'a') as f:
+    f.write('{}: {}\n'.format(predict_idx, timestamp))
+  logger.debug("Wrote timestamp {} to 'start.txt' for predition {}."\
+               .format(timestamp, predict_idx))
 
 class ModelApiError(Exception):
   pass
@@ -235,13 +248,14 @@ if __name__=="__main__":
     datanames = [x for x in datanames if x.endswith('.data')]
 
     if len(datanames) != 1:
-      raise ValueError("Multiple (or zero) datasets found in dataset_dir={}!\n"\
-                       .format(dataset_dir) +
+      raise ValueError("{} datasets found in dataset_dir={}!\n"\
+                       .format(len(datanames), dataset_dir) +
                        "Please put only ONE dataset under dataset_dir.")
 
     basename = datanames[0]
 
-    write_start_file(output_dir, start_time=start)
+    write_start_file(output_dir, start_time=start, time_budget=time_budget,
+                     task_name=basename.split('.')[0])
 
     logger.info("************************************************")
     logger.info("******** Processing dataset " + basename[:-5].capitalize() +
@@ -313,6 +327,9 @@ if __name__=="__main__":
               "Bad prediction shape! Expected {} but got {}."\
               .format(correct_prediction_shape, prediction_shape)
             )
+        # Write timestamp to 'start.txt'
+        write_timestamp(output_dir, predict_idx=prediction_order_number,
+                        timestamp=time.time())
         # Prediction files: adult.predict_0, adult.predict_1, ...
         filename_test = basename[:-5] + '.predict_' +\
           str(prediction_order_number)
