@@ -50,21 +50,21 @@ class AutoDLMetadata(object):
   def get_dataset_name(self):
     return self.dataset_name_
 
-  def is_compressed(self, bundle_index):
+  def is_compressed(self, bundle_index=0):
     return self.metadata_.matrix_spec[
         bundle_index].format == MatrixSpec.COMPRESSED
 
-  def is_sparse(self, bundle_index):
+  def is_sparse(self, bundle_index=0):
     return self.metadata_.matrix_spec[bundle_index].format == MatrixSpec.SPARSE
 
   def get_bundle_size(self):
     return len(self.metadata_.matrix_spec)
 
-  def get_matrix_size(self, bundle_index):
+  def get_matrix_size(self, bundle_index=0):
     return (self.metadata_.matrix_spec[bundle_index].row_count,
             self.metadata_.matrix_spec[bundle_index].col_count)
 
-  def get_num_channels(self, bundle_index):
+  def get_num_channels(self, bundle_index=0):
     num_channels = self.metadata_.matrix_spec[bundle_index].num_channels
     if num_channels == -1: # Unknown or undefined num_channels
       if self.is_compressed(bundle_index): # If is compressed image, set to 3
@@ -74,14 +74,14 @@ class AutoDLMetadata(object):
     else:
       return num_channels
 
-  def get_tensor_size(self, bundle_index):
+  def get_tensor_size(self, bundle_index=0):
     """For a dataset with examples of shape (T,H,W,C), return the shape (H,W,C).
     """
     matrix_size = self.get_matrix_size(bundle_index)
     num_channels = self.get_num_channels(bundle_index)
     return matrix_size[0], matrix_size[1], num_channels
 
-  def get_tensor_shape(self, bundle_index):
+  def get_tensor_shape(self, bundle_index=0):
     """ get_tensor_size updated with sequence size """
     sequence_size = self.get_sequence_size()
     row_count, col_count = self.get_matrix_size(bundle_index)
@@ -227,9 +227,14 @@ class AutoDLDataset(object):
         sample.append(tensor)
 
     labels = tf.sparse_to_dense(
-        contexts["label_index"].values, (self.metadata_.get_output_size(),),
+        contexts["label_index"].values,
+        (self.metadata_.get_output_size(),),
         contexts["label_score"].values,
         validate_indices=False)
+    #sparse_tensor = tf.sparse.SparseTensor(indices=(contexts["label_index"].values,),
+    #                                       values=contexts["label_score"].values,
+    #                                       dense_shape=(self.metadata_.get_output_size(),))
+    #labels = tf.sparse.to_dense(sparse_tensor, validate_indices=False)
     sample.append(labels)
     return sample
 

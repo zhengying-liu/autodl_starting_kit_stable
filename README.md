@@ -63,7 +63,7 @@ HTML page in `AutoDL_scoring_output/`.
 
 The full usage is
 ```
-python run_local_test.py -dataset_dir='AutoDL_sample_data/miniciao' -code_dir=AutoDL_simple_baseline_models/linear'
+python run_local_test.py -dataset_dir='AutoDL_sample_data/miniciao' -code_dir='AutoDL_simple_baseline_models/linear'
 ```
 or
 ```

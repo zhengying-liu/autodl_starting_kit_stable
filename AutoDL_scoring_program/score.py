@@ -7,12 +7,13 @@
 #           prediction_dir should contain e.g. start.txt, adult.predict_0, adult.predict_1,..., end.txt.
 #           score_dir should contain scores.txt, detailed_results.html
 
-VERSION = 'v20190508'
+VERSION = 'v20190516'
 DESCRIPTION =\
 """This is the scoring program for AutoDL challenge. It takes the predictions
 made by ingestion program as input and compare to the solution file and produce
 a learning curve.
 Previous updates:
+20190516: [ZY] Change time budget to 20 minutes.
 20190508: [ZY] Decompose drawing learning curve functions;
                Remove redirect output feature;
                Use AUC instead of BAC;
@@ -277,7 +278,7 @@ def plot_learning_curve(timestamps, scores,
                         start_time=0, time_budget=7200, method='step',
                         transform=None, task_name=None, curve_color=None,
                         area_color='cyan', fill_area=True, model_name='',
-                        clear_figure=True, t0=300):
+                        clear_figure=True):
   """Plot learning curve using scores and corresponding timestamps.
 
   Args:
@@ -296,8 +297,6 @@ def plot_learning_curve(timestamps, scores,
     fill_area: boolean, fill the area under the curve or not
     model_name: string, name of the model (learning algorithm).
     clear_figure: boolean, clear previous figures or not
-    t0: float, parameter for doing time transformation and adjusting weights
-      for computing area under learning curve
   Returns:
     alc: float, the area under learning curve.
     ax: matplotlib.axes.Axes, the figure with learning curve
@@ -324,8 +323,15 @@ def plot_learning_curve(timestamps, scores,
       raise ValueError("The timestamp {} at index {}".format(timestamps[i], i) +
                        " exceeds time budget!")
   if transform is None:
+    t0 = 60
     # default transformation
     transform = lambda t: transform_time(t, time_budget, t0=t0)
+    xlabel = "Transformed time: " +\
+             r'$\tilde{t} = \frac{\log (1 + t / t_0)}{ \log (1 + T / t_0)}$ ' +\
+             ' ($T = ' + str(int(time_budget)) + '$, ' +\
+             ' $t_0 = ' + str(int(t0)) + '$)'
+  else:
+    xlabel = "Transformed time: " + r'$\tilde{t}$'
   relative_timestamps = [t - start_time for t in timestamps]
   # Transform X
   X = [transform(t) for t in relative_timestamps]
@@ -366,19 +372,17 @@ def plot_learning_curve(timestamps, scores,
   # Draw a dotted line from last prediction
   ax.plot(X[-2:], Y[-2:], '--')
   plt.title("Learning curve for task: {}".format(task_name), y=1.06)
-  ax.set_xlabel("Transformed time: " +\
-             r'$\tilde{t} = \frac{\log (1 + t / t_0)}{ \log (1 + T / t_0)}$ ' +\
-             ' ($T = ' + str(int(time_budget)) + '$, ' +\
-             ' $t_0 = ' + str(int(t0)) + '$)')
+  ax.set_xlabel(xlabel)
   ax.set_xlim(left=0, right=1)
   ax.set_ylabel('score (2 * AUC - 1)')
   ax.set_ylim(bottom=-0.01, top=1)
   ax.grid(True, zorder=5)
-  if t0:
-    ax2 = ax.twiny() # For real time in seconds
-    ticks = [10, 60, 300, 600, 1200, 1800, 3600, 5400, 7200]
-    ax2.set_xticks([transform(t) for t in ticks])
-    ax2.set_xticklabels(ticks)
+  # Show real time in seconds in a second x-axis
+  ax2 = ax.twiny()
+  ticks = [10, 60, 300, 600, 1200] +\
+          list(range(1800, int(time_budget) + 1, 1800))
+  ax2.set_xticks([transform(t) for t in ticks])
+  ax2.set_xticklabels(ticks)
   ax.legend()
   return alc, ax
 
@@ -603,7 +607,7 @@ if __name__ == "__main__":
     default_solution_dir = join(root_dir, "AutoDL_sample_data")
     default_prediction_dir = join(root_dir, "AutoDL_sample_result_submission")
     default_score_dir = join(root_dir, "AutoDL_scoring_output")
-    default_time_budget = 7200
+    default_time_budget = 1200
     # Parse directories from input arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--solution_dir', type=str,

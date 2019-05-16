@@ -6,7 +6,7 @@
 
 # AS A PARTICIPANT, DO NOT MODIFY THIS CODE.
 
-VERSION = 'v20190508'
+VERSION = 'v20190516'
 DESCRIPTION =\
 """This is the "ingestion program" written by the organizers. It takes the
 code written by participants (with `model.py`) and one dataset as input,
@@ -14,6 +14,7 @@ run the code on the dataset and produce predictions on test set. For more
 information on the code/directory structure, please see comments in this
 code (ingestion.py) and the README file of the starting kit.
 Previous updates:
+20190516: [ZY] Change time budget to 20 minutes.
 20190508: [ZY] Add time_budget to 'start.txt'
 20190507: [ZY] Write timestamps to 'start.txt'
 20190505: [ZY] Use argparse to parse directories AND time budget;
@@ -177,7 +178,7 @@ if __name__=="__main__":
     default_ingestion_program_dir = join(root_dir, "AutoDL_ingestion_program")
     default_code_dir = join(root_dir, "AutoDL_sample_code_submission")
     default_score_dir = join(root_dir, "AutoDL_scoring_output")
-    default_time_budget = 7200
+    default_time_budget = 1200
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_dir', type=str,
                         default=default_dataset_dir,

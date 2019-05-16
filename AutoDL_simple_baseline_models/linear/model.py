@@ -79,7 +79,7 @@ class Model(object):
     # Critical number for early stopping
     # Depends on number of classes (output_dim)
     # see the function self.choose_to_stop_early() below for more details
-    self.num_epochs_we_want_to_train = 40
+    self.num_epochs_we_want_to_train = 1
 
   def train(self, dataset, remaining_time_budget=None):
     """Train this algorithm on the tensorflow |dataset|.
