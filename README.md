@@ -29,23 +29,29 @@ see the [Dockerfile](https://github.com/zhengying-liu/autodl/blob/master/docker/
 If you are new to docker, install docker from https://docs.docker.com/get-started/.
 Then, at the shell, run:
 ```
-cd path_to/AutoDL_starting_kit_stable/
-docker run -it -u root -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:gpu
+cd path_to/autodl_starting_kit_stable/
+docker run -it -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:cpu
 ```
-The backend on CodaLab runs this Docker image, who has supports such as
-`tensorflow-gpu` (with TensorFlow 1.13.1), `torch=1.0.1`, `keras=2.2.4`,
- CUDA 10, cuDNN 7.5, etc. If you want to
-run local test with Nvidia GPU support, please make sure you have
-[installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker) and use
-`nvidia-docker` instead of `docker` in above command.
+The tag `cpu` indicates that this image only supports usage of CPU (instead of
+GPU). The option `-v "$(pwd):/app/codalab"` mounts current directory
+(`autodl_starting_kit_stable/`) as `/app/codalab`. If you want to mount other
+directories on your disk, please replace `$(pwd)` by your own directory.
+The option `-p 8888:8888` is useful for running a Jupyter notebook tutorial
+inside Docker.
 
-**WARNING: If you DON'T have Nvidia GPU support** in your local environment, use
-the tag
+The backend on CodaLab runs a slightly different Docker image
 ```
-evariste/autodl:cpu
+evariste/autodl:gpu
 ```
-instead of `evariste/autodl:gpu` otherwise you'll get errors when
-importing TensorFlow.
+who has Nvidia GPU supports. Both Docker images have installed packages such as
+`tensorflow-gpu=1.13.1` (or `tensorflow=1.13.1` for `cpu`), `torch=1.0.1`,
+`keras=2.2.4`, CUDA 10, cuDNN 7.5, etc. If you want to
+run local test with Nvidia GPU support, please make sure you have
+[installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker) and run
+instead
+```
+nvidia-docker run -it -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:gpu
+```
 
 Make sure you use enough RAM (**at least 4GB**). If the port 8888 is occupied,
 you can use other ports, e.g. 8899, and use instead the option `-p 8899:8888`.

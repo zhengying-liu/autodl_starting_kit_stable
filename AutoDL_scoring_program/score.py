@@ -319,9 +319,12 @@ def plot_learning_curve(timestamps, scores,
     if timestamps[i] < start_time:
       raise ValueError("The timestamp {} at index {}".format(timestamps[i], i) +
                        " is earlier than start time {}!".format(start_time))
-    if timestamps[i] > time_budget + start_time:
-      raise ValueError("The timestamp {} at index {}".format(timestamps[i], i) +
-                       " exceeds time budget!")
+  timestamps = [t for t in timestamps if t <= time_budget + start_time]
+  if len(timestamps) < le:
+    logger.warning("Some predictions are made after the time budget! " +
+                   "Ignoring all predictions from the index {}."\
+                   .format(len(timestamps)))
+    scores = scores[:len(timestamps)]
   if transform is None:
     t0 = 60
     # default transformation
