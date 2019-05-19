@@ -349,11 +349,11 @@ def plot_learning_curve(timestamps, scores,
   if method == 'step':
     drawstyle = 'steps-post'
     step = 'post'
-    auc_func = auc
+    auc_func = auc_step
   elif method == 'trapez':
     drawstyle = 'default'
     step = None
-    auc_func = auc_step
+    auc_func = auc
   else:
     raise ValueError("The `method` variable should be one of " +
                      "['step', 'trapez']!")
