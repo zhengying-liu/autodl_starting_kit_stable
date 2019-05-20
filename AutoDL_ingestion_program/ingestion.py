@@ -45,7 +45,8 @@ Previous updates:
 #       └── sample-adult-train.tfrecord
 #
 # The output directory output_dir (e.g. AutoDL_sample_result_submission/)
-# will receive all predictions made during the whole train/predict process
+# will first have a start.txt file written by ingestion then receive
+# all predictions made during the whole train/predict process
 # (thus this directory is updated when a new prediction is made):
 # 	adult.predict_0
 # 	adult.predict_1
@@ -135,6 +136,17 @@ def write_start_file(output_dir, start_time=None, time_budget=None,
                      task_name=None):
   """Create start file 'start.txt' in `output_dir` with ingestion's pid and
   start time.
+
+  The content of this file will be similar to:
+      ingestion_pid: 1
+      task_name: beatriz
+      time_budget: 7200
+      start_time: 1557923830.3012087
+      0: 1557923854.504741
+      1: 1557923860.091236
+      2: 1557923865.9630117
+      3: 1557923872.3627956
+      <more timestamps of predictions>
   """
   ingestion_pid = os.getpid()
   start_filename =  'start.txt'
@@ -353,13 +365,13 @@ if __name__=="__main__":
     overall_time_spent = end_time - start
 
     # Write overall_time_spent to a end.txt file
-    duration_filename =  'end.txt'
-    with open(os.path.join(output_dir, duration_filename), 'w') as f:
+    end_filename =  'end.txt'
+    with open(os.path.join(output_dir, end_filename), 'w') as f:
       f.write('ingestion_duration: ' + str(overall_time_spent) + '\n')
       f.write('ingestion_success: ' + str(int(ingestion_success)) + '\n')
       f.write('end_time: ' + str(end_time) + '\n')
       logger.info("Wrote the file {} marking the end of ingestion."\
-                  .format(duration_filename))
+                  .format(end_filename))
       if ingestion_success:
           logger.info("[+] Done. Ingestion program successfully terminated.")
           logger.info("[+] Overall time spent %5.2f sec " % overall_time_spent)
