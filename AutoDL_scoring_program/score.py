@@ -7,12 +7,13 @@
 #           prediction_dir should contain e.g. start.txt, adult.predict_0, adult.predict_1,..., end.txt.
 #           score_dir should contain scores.txt, detailed_results.html
 
-VERSION = 'v20190516'
+VERSION = 'v20190519'
 DESCRIPTION =\
 """This is the scoring program for AutoDL challenge. It takes the predictions
 made by ingestion program as input and compare to the solution file and produce
 a learning curve.
 Previous updates:
+20190519: [ZY] Use the correct function for computing AUC of step functions
 20190516: [ZY] Change time budget to 20 minutes.
 20190508: [ZY] Decompose drawing learning curve functions;
                Remove redirect output feature;
