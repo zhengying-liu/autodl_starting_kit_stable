@@ -63,7 +63,7 @@ The backend on CodaLab runs a slightly different Docker image
 evariste/autodl:gpu
 ```
 who has Nvidia GPU supports. Both Docker images have installed packages such as
-`tensorflow-gpu=1.13.1` (or `tensorflow=1.13.1` for `cpu`), `torch=1.0.1`,
+`tensorflow-gpu=1.13.1` (or `tensorflow=1.13.1` for `cpu`), `torch=1.1.0`,
 `keras=2.2.4`, CUDA 10, cuDNN 7.5, etc. If you want to
 run local test with Nvidia GPU support, please make sure you have
 [installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker) and run
