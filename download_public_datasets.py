@@ -20,7 +20,7 @@ def main(*argv):
       'Hammer':'https://autodl.lri.fr/my/datasets/download/3507841e-59fe-4598-a27e-a9e170b26e44',
       'Kraut':'https://autodl.lri.fr/my/datasets/download/a1d9f706-cf8d-4a63-a544-552d6b85d6c4',
       'Katze':'https://autodl.lri.fr/my/datasets/download/611a42fa-da42-4a30-8c7a-69230d9eeb92',
-      'Kreatur':'https://autodl.lri.fr/my/datasets/download/c240df57-b144-41df-a059-05bc859d2621'      
+      'Kreatur':'https://autodl.lri.fr/my/datasets/download/08c2afcd-74b1-4c5e-8b93-9f6c9a96add2'      
   }
   solution_urls = {
       'Munster':'https://autodl.lri.fr/my/datasets/download/5a24d8f3-dfb6-4935-b798-14baccda695f',
@@ -30,7 +30,7 @@ def main(*argv):
       'Hammer':'https://autodl.lri.fr/my/datasets/download/e5b6188f-a377-4a5d-bbe1-a586716af487',
       'Kraut':'https://autodl.lri.fr/my/datasets/download/47ff016d-cc66-47a9-945d-bc01fd9096c9',
       'Katze':'https://autodl.lri.fr/my/datasets/download/a04de92e-b04b-49a6-96c2-5910c64f9b3c',
-      'Kreatur':'https://autodl.lri.fr/my/datasets/download/31ecdb19-c25a-420f-9764-8d1783705deb'
+      'Kreatur':'https://autodl.lri.fr/my/datasets/download/10e04890-f05a-4004-a499-1cc167769edd'
   }
 
   def _HERE(*args):
