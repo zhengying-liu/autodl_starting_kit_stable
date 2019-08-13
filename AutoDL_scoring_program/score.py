@@ -1,13 +1,13 @@
 ################################################################################
 # Name:         Scoring Program
 # Author:       Zhengying Liu, Isabelle Guyon, Adrien Pavao, Zhen Xu
-# Update time:  5 May 2019
+# Update time:  13 Aug 2019
 # Usage: 		python score.py --solution_dir=<solution_dir> --prediction_dir=<prediction_dir> --score_dir=<score_dir>
 #           solution_dir contains  e.g. adult.solution
 #           prediction_dir should contain e.g. start.txt, adult.predict_0, adult.predict_1,..., end.txt.
 #           score_dir should contain scores.txt, detailed_results.html
 
-VERSION = 'v20190519'
+VERSION = 'v20190709'
 DESCRIPTION =\
 """This is the scoring program for AutoDL challenge. It takes the predictions
 made by ingestion program as input and compare to the solution file and produce

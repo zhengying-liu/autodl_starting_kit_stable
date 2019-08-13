@@ -1,12 +1,12 @@
 ################################################################################
 # Name:         Ingestion Program
 # Author:       Zhengying Liu, Isabelle Guyon, Adrien Pavao, Zhen Xu
-# Update time:  7 May 2019
+# Update time:  13 Aug 2019
 # Usage: python ingestion.py --dataset_dir=<dataset_dir> --output_dir=<prediction_dir> --ingestion_program_dir=<ingestion_program_dir> --code_dir=<code_dir> --score_dir=<score_dir>
 
 # AS A PARTICIPANT, DO NOT MODIFY THIS CODE.
 
-VERSION = 'v20190516'
+VERSION = 'v20190709'
 DESCRIPTION =\
 """This is the "ingestion program" written by the organizers. It takes the
 code written by participants (with `model.py`) and one dataset as input,
