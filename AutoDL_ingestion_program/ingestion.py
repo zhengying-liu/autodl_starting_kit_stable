@@ -14,6 +14,7 @@ run the code on the dataset and produce predictions on test set. For more
 information on the code/directory structure, please see comments in this
 code (ingestion.py) and the README file of the starting kit.
 Previous updates:
+20190708: [ZY] Integrate Julien's parallel data loader
 20190516: [ZY] Change time budget to 20 minutes.
 20190508: [ZY] Add time_budget to 'start.txt'
 20190507: [ZY] Write timestamps to 'start.txt'

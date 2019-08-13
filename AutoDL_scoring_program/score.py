@@ -13,6 +13,9 @@ DESCRIPTION =\
 made by ingestion program as input and compare to the solution file and produce
 a learning curve.
 Previous updates:
+20190709: [ZY] Resolve all issues; rearrange some logging messages;
+               simplify main function; fix exit_code of run_local_test.py;
+20190708: [ZY] Write the class Evaluator for object-oriented scoring program
 20190519: [ZY] Use the correct function for computing AUC of step functions
 20190516: [ZY] Change time budget to 20 minutes.
 20190508: [ZY] Decompose drawing learning curve functions;
@@ -72,21 +75,14 @@ Previous updates:
 # Can be: NOTSET, DEBUG, INFO, WARNING, ERROR, CRITICAL
 verbosity_level = 'INFO'
 
-# Constant used for a missing score
-missing_score = -0.999999
-
-from functools import partial
-from libscores import read_array, sp, ls, mvmean, tiedrank
-from os import getcwd as pwd
+from libscores import read_array, sp, ls, mvmean, tiedrank, _HERE, get_logger
 from os.path import join
 from sys import argv
 from sklearn.metrics import auc
-from sklearn.metrics import roc_auc_score
 import argparse
 import base64
 import datetime
-import logging
-import matplotlib; matplotlib.use('Agg') # Solve the Tkinter display issue of matplotlib.pyplot
+import matplotlib; matplotlib.use('Agg') # Solve the Tkinter display issue
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -94,38 +90,13 @@ import psutil
 import sys
 import time
 import yaml
-
-def get_logger(verbosity_level, use_error_log=False):
-  """Set logging format to something like:
-       2019-04-25 12:52:51,924 INFO score.py: <message>
-  """
-  logger = logging.getLogger(__file__)
-  logging_level = getattr(logging, verbosity_level)
-  logger.setLevel(logging_level)
-  formatter = logging.Formatter(
-    fmt='%(asctime)s %(levelname)s %(filename)s: %(message)s')
-  stdout_handler = logging.StreamHandler(sys.stdout)
-  stdout_handler.setLevel(logging_level)
-  stdout_handler.setFormatter(formatter)
-  logger.addHandler(stdout_handler)
-  if use_error_log:
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setLevel(logging.WARNING)
-    stderr_handler.setFormatter(formatter)
-    logger.addHandler(stderr_handler)
-  logger.propagate = False
-  return logger
+from random import randrange
 
 logger = get_logger(verbosity_level)
 
 ################################################################################
 # Functions
 ################################################################################
-
-def _HERE(*args):
-    """Helper function for getting the current directory of the script."""
-    h = os.path.dirname(os.path.realpath(__file__))
-    return os.path.abspath(os.path.join(h, *args))
 
 # Metric used to compute the score of a point on the learning curve
 def autodl_auc(solution, prediction, valid_columns_only=True):
@@ -141,7 +112,7 @@ def autodl_auc(solution, prediction, valid_columns_only=True):
   if valid_columns_only:
     valid_columns = get_valid_columns(solution)
     if len(valid_columns) < solution.shape[-1]:
-      logger.warning("Some columns in solution have only one class, " +
+      logger.info("Some columns in solution have only one class, " +
                      "ignoring these columns for evaluation.")
     solution = solution[:, valid_columns].copy()
     prediction = prediction[:, valid_columns].copy()
@@ -164,6 +135,10 @@ def accuracy(solution, prediction):
   prediction_normalized =\
     prediction / (np.sum(np.abs(prediction), axis=1, keepdims=True) + epsilon)
   return np.sum(solution * prediction_normalized) / solution.shape[0]
+
+scoring_functions = {'nauc': autodl_auc,
+                     'accuracy': accuracy
+                     }
 
 def get_valid_columns(solution):
   """Get a list of column indices for which the column has more than one class.
@@ -232,33 +207,6 @@ def get_task_name(solution_dir):
   task_name = solution_file.split(os.sep)[-1].split('.')[0]
   return task_name
 
-def get_prediction_files(prediction_dir):
-  """Return prediction files in prediction directory.
-
-  Examples of prediction file name: mini.predict_0, mini.predict_1
-  """
-  prediction_files = ls(os.path.join(prediction_dir, '*.predict_*'))
-  task_names = set([os.path.basename(f.split('.')[-2])
-                    for f in prediction_files])
-  if len(task_names) > 1:
-    raise ValueError("Predictions of multiple tasks are found: {}!"\
-                     .format(prediction_files))
-  order_key = lambda filename: int(filename.split('_')[-1])
-  prediction_files = sorted(prediction_files, key=order_key)
-  return prediction_files
-
-def get_new_prediction_files(prediction_dir, prediction_files_so_far=None):
-  """Get a list of new predictions (arrays) w.r.t. `prediction_files_so_far`."""
-  prediction_files = get_prediction_files(prediction_dir)
-  if prediction_files_so_far is None:
-    prediction_files_so_far = []
-  new_prediction_files = [p for p in prediction_files
-                           if p not in prediction_files_so_far]
-  order_key = lambda filename: int(filename.split('_')[-1])
-  new_prediction_files = sorted(new_prediction_files, key=order_key)
-  # new_predictions = [read_array(p) for p in new_prediction_files]
-  return new_prediction_files
-
 def transform_time(t, T, t0=None):
   if t0 is None:
     t0 = T
@@ -277,9 +225,10 @@ def auc_step(X, Y):
 
 def plot_learning_curve(timestamps, scores,
                         start_time=0, time_budget=7200, method='step',
-                        transform=None, task_name=None, curve_color=None,
-                        area_color='cyan', fill_area=True, model_name='',
-                        clear_figure=True):
+                        transform=None, task_name=None,
+                        area_color='cyan', fill_area=True, model_name=None,
+                        clear_figure=True, fig=None, show_final_score=True,
+                        **kwargs):
   """Plot learning curve using scores and corresponding timestamps.
 
   Args:
@@ -293,14 +242,16 @@ def plot_learning_curve(timestamps, scores,
       use the default transformation
           lambda t: np.log2(1 + t / time_budget)
     task_name: string, name of the task
-    curve_color: matplotlib color, color of the learning curve
     area_color: matplotlib color, color of the area under learning curve
     fill_area: boolean, fill the area under the curve or not
     model_name: string, name of the model (learning algorithm).
     clear_figure: boolean, clear previous figures or not
+    fig: the figure to plot on
+    show_final_score: boolean, show the last score or not
+    kwargs: Line2D properties, optional
   Returns:
     alc: float, the area under learning curve.
-    ax: matplotlib.axes.Axes, the figure with learning curve
+    fig: the figure with learning curve
   Raises:
     ValueError: if the length of `timestamps` and `scores` are not equal,
       or if `timestamps` is not increasing, or if certain timestamp is not in
@@ -339,14 +290,29 @@ def plot_learning_curve(timestamps, scores,
   relative_timestamps = [t - start_time for t in timestamps]
   # Transform X
   X = [transform(t) for t in relative_timestamps]
-  Y = scores.copy()
+  Y = list(scores.copy())
   # Add origin as the first point of the curve
   X.insert(0, 0)
   Y.insert(0, 0)
   # Draw learning curve
   if clear_figure:
     plt.clf()
-  fig, ax = plt.subplots(figsize=(7, 7.07)) #Have a small area of negative score
+  if fig is None or len(fig.axes) == 0:
+    fig = plt.figure(figsize=(7, 7.07))
+    ax = fig.add_subplot(111)
+    plt.title("Learning curve for task: {}".format(task_name), y=1.06)
+    ax.set_xlabel(xlabel)
+    ax.set_xlim(left=0, right=1)
+    ax.set_ylabel('score (2 * AUC - 1)')
+    ax.set_ylim(bottom=-0.01, top=1)
+    ax.grid(True, zorder=5)
+    # Show real time in seconds in a second x-axis
+    ax2 = ax.twiny()
+    ticks = [10, 60, 300, 600, 1200] +\
+            list(range(1800, int(time_budget) + 1, 1800))
+    ax2.set_xticks([transform(t) for t in ticks])
+    ax2.set_xticklabels(ticks)
+  ax = fig.axes[0]
   if method == 'step':
     drawstyle = 'steps-post'
     step = 'post'
@@ -363,153 +329,29 @@ def plot_learning_curve(timestamps, scores,
   Y.append(Y[-1])
   # Compute AUC using step function rule or trapezoidal rule
   alc = auc_func(X, Y)
+  if model_name:
+    label = "{}: ALC={:.4f}".format(model_name, alc)
+  else:
+    label = "ALC={:.4f}".format(alc)
   # Plot the major part of the figure: the curve
-  ax.plot(X[:-1], Y[:-1], drawstyle=drawstyle, marker="o",
-          label=model_name + " ALC={:.4f}".format(alc),
-          markersize=3, color=curve_color)
-  # ax.set_label(model_name + " ALC={:.4f}".format(alc))
+  if 'marker' not in kwargs:
+    kwargs['marker'] = 'o'
+  if 'markersize' not in kwargs:
+    kwargs['markersize'] = 3
+  ax.plot(X[:-1], Y[:-1], drawstyle=drawstyle, label=label, **kwargs)
   # Fill area under the curve
   if fill_area:
     ax.fill_between(X, Y, color='cyan', step=step)
   # Show the latest/final score
-  ax.text(X[-1], Y[-1], "{:.4f}".format(Y[-1]))
+  if show_final_score:
+    ax.text(X[-1], Y[-1], "{:.4f}".format(Y[-1]))
   # Draw a dotted line from last prediction
-  ax.plot(X[-2:], Y[-2:], '--')
-  plt.title("Learning curve for task: {}".format(task_name), y=1.06)
-  ax.set_xlabel(xlabel)
-  ax.set_xlim(left=0, right=1)
-  ax.set_ylabel('score (2 * AUC - 1)')
-  ax.set_ylim(bottom=-0.01, top=1)
-  ax.grid(True, zorder=5)
-  # Show real time in seconds in a second x-axis
-  ax2 = ax.twiny()
-  ticks = [10, 60, 300, 600, 1200] +\
-          list(range(1800, int(time_budget) + 1, 1800))
-  ax2.set_xticks([transform(t) for t in ticks])
-  ax2.set_xticklabels(ticks)
+  kwargs['linestyle'] = '--'
+  kwargs['linewidth'] = 1
+  kwargs['marker'] = None
+  ax.plot(X[-2:], Y[-2:], **kwargs)
   ax.legend()
-  return alc, ax
-
-# TODO: change this function to avoid repeated computing
-def draw_learning_curve(solution_dir, prediction_files,
-                        scoring_function, output_dir,
-                        basename, start, is_multiclass_task):
-  """Draw learning curve for one task."""
-  solution = get_solution(solution_dir) # numpy array
-  scores = []
-  roc_auc_scores = []
-  _, timestamps = get_timestamps(prediction_dir)
-  if is_multiclass_task:
-    accuracy_scores = []
-  for prediction_file in prediction_files:
-    prediction = read_array(prediction_file) # numpy array
-    if (solution.shape != prediction.shape): raise ValueError(
-        "Bad prediction shape: {}. ".format(prediction.shape) +
-        "Expected shape: {}".format(solution.shape))
-    scores.append(scoring_function(solution, prediction))
-    try: # if only one class present in y_true. ROC AUC score is not defined in that case.
-        roc_auc_scores.append(roc_auc_score(solution, prediction))
-    except:
-        roc_auc_scores.append(-1)
-    if is_multiclass_task:
-      accuracy_scores.append(accuracy(solution, prediction))
-  # Sort two lists according to timestamps
-  sorted_pairs = sorted(zip(timestamps, scores))
-  roc_auc_sorted_pairs = sorted(zip(timestamps, roc_auc_scores))
-  time_used = -1
-  if len(timestamps) > 0:
-    time_used = sorted_pairs[-1][0] - start
-    latest_score = sorted_pairs[-1][1]
-    latest_roc_auc = roc_auc_sorted_pairs[-1][1]
-    logger.info("(2 * AUC - 1) of the latest prediction is {:.4f}."\
-              .format(latest_score))
-    if not latest_roc_auc == -1:
-      logger.info("ROC AUC of the latest prediction is {:.4f}."\
-                .format(latest_roc_auc))
-    if is_multiclass_task:
-      sorted_pairs_acc = sorted(zip(timestamps, accuracy_scores))
-      latest_acc = sorted_pairs_acc[-1][1]
-      logger.info("Accuracy of the latest prediction is {:.4f}."\
-                .format(latest_acc))
-  X = [t for t, _ in sorted_pairs]
-  Y = [s for _, s in sorted_pairs]
-  alc, ax = plot_learning_curve(X, Y,
-                          start_time=start, time_budget=time_budget,
-                          task_name=basename)
-  fig_name = get_fig_name(basename)
-  path_to_fig = os.path.join(output_dir, fig_name)
-  plt.savefig(path_to_fig)
-  plt.close()
-  return alc, time_used
-
-def update_score_and_learning_curve(prediction_dir,
-                                    basename,
-                                    start,
-                                    solution_dir,
-                                    scoring_function,
-                                    score_dir,
-                                    is_multiclass_task):
-  prediction_files = get_prediction_files(prediction_dir)
-  alc = 0
-  alc, time_used = draw_learning_curve(solution_dir=solution_dir,
-                            prediction_files=prediction_files,
-                            scoring_function=scoring_function,
-                            output_dir=score_dir,
-                            basename=basename,
-                            start=start,
-                            is_multiclass_task=is_multiclass_task)
-  # Update learning curve page (detailed_results.html)
-  write_scores_html(score_dir)
-  # Write score
-  score = float(alc)
-  write_score(score_dir, score, duration=time_used)
-  return score
-
-def init_scores_html(detailed_results_filepath):
-  html_head = '<html><head> <meta http-equiv="refresh" content="5"> ' +\
-              '</head><body><pre>'
-  html_end = '</pre></body></html>'
-  with open(detailed_results_filepath, 'a') as html_file:
-    html_file.write(html_head)
-    html_file.write("Starting training process... <br> Please be patient. " +
-                    "Learning curves will be generated when first " +
-                    "predictions are made.")
-    html_file.write(html_end)
-
-def write_scores_html(score_dir, auto_refresh=True, append=False):
-  filename = 'detailed_results.html'
-  image_paths = sorted(ls(os.path.join(score_dir, '*.png')))
-  if auto_refresh:
-    html_head = '<html><head> <meta http-equiv="refresh" content="5"> ' +\
-                '</head><body><pre>'
-  else:
-    html_head = """<html><body><pre>"""
-  html_end = '</pre></body></html>'
-  if append:
-    mode = 'a'
-  else:
-    mode = 'w'
-  filepath = os.path.join(score_dir, filename)
-  with open(filepath, mode) as html_file:
-      html_file.write(html_head)
-      for image_path in image_paths:
-        with open(image_path, "rb") as image_file:
-          encoded_string = base64.b64encode(image_file.read())
-          encoded_string = encoded_string.decode('utf-8')
-          s = '<img src="data:image/png;charset=utf-8;base64,{}"/>'\
-              .format(encoded_string)
-          html_file.write(s + '<br>')
-      html_file.write(html_end)
-  logger.debug("Wrote learning curve page to {}".format(filepath))
-
-def write_score(score_dir, score, duration=-1):
-  """Write score and duration to score_dir/scores.txt"""
-  score_filename = os.path.join(score_dir, 'scores.txt')
-  with open(score_filename, 'w') as f:
-    f.write('score: ' + str(score) + '\n')
-    f.write('Duration: ' + str(duration) + '\n')
-  logger.debug("Wrote to score_filename={} with score={}, duration={}"\
-                .format(score_filename, score, duration))
+  return alc, fig
 
 def get_ingestion_info(prediction_dir):
   """Get info on ingestion program: PID, start time, etc. from 'start.txt'.
@@ -572,25 +414,27 @@ def get_scores(scoring_function, solution, predictions):
   scores = [scoring_function(solution, pred) for pred in predictions]
   return scores
 
-def ingestion_is_alive(prediction_dir):
+def end_file_generated(prediction_dir):
   """Check if ingestion is still alive by checking if the file 'end.txt'
   is generated in the folder of predictions.
   """
   end_filepath =  os.path.join(prediction_dir, 'end.txt')
   logger.debug("CPU usage: {}%".format(psutil.cpu_percent()))
   logger.debug("Virtual memory: {}".format(psutil.virtual_memory()))
-  return not os.path.isfile(end_filepath)
+  return os.path.isfile(end_filepath)
 
 def is_process_alive(pid):
+  """Check if a process is alive according to its PID."""
   try:
-    os.kill(ingestion_pid, 0)
+    os.kill(pid, 0)
   except OSError:
     return False
   else:
     return True
 
 def terminate_process(pid):
-  process = psutil.Process(ingestion_pid)
+  """Kill a process according to its PID."""
+  process = psutil.Process(pid)
   process.terminate()
   logger.debug("Terminated process with pid={} in scoring.".format(pid))
 
@@ -600,18 +444,406 @@ class IngestionError(Exception):
 class ScoringError(Exception):
   pass
 
+class LearningCurve(object):
+  """Learning curve object for AutoDL challenges. Contains at least an
+  increasing list of float as timestamps and another list of the same length
+  of the corresponding score at each timestamp.
+  """
+
+  def __init__(self, timestamps=None, scores=None, time_budget=1200,
+               score_name=None, task_name=None,
+               participant_name=None, algorithm_name=None, subset='test'):
+    """
+    Args:
+      timestamps: list of float, should be increasing
+      scores: list of float, should have the same length as `timestamps`
+      time_budget: float, the time budget (for ingestion) of the task
+      score_name: string, can be 'nauc' or 'accuracy' (if is multiclass task)
+      task_name: string, name of the task, optional
+      participant_name: string, name of the participant, optional
+      algorithm_name: string, name of the algorithm, optional
+    """
+    self.timestamps = timestamps or [] # relative timestamps
+    self.scores = scores or []
+    self.time_budget = time_budget
+    self.score_name = score_name or 'nauc'
+    self.task_name = task_name
+    self.participant_name = participant_name
+    self.algorithm_name = algorithm_name
+
+  def plot(self, method='step', transform=None,
+           area_color='cyan', fill_area=True, model_name=None,
+           fig=None, show_final_score=True, **kwargs):
+    """Plot the learning curve using `matplotlib.pyplot`.
+
+    method: string, can be 'step' or 'trapez'. Decides which drawstyle to use.
+        Also effects ALC (Area under Learning Curve)
+    transform: callable, for transforming time axis to [0,1] interval, mostly
+        optional
+    area_color: string or color code, decides the color of the area under curve,
+        optional
+    fill_area: boolean, whether fill the area under curve with color or not
+    model_name: string, if not `None`, will be shown on the legend
+    fig: matplotlib.figure.Figure, the figure to plot on. If `None` create a new
+        one
+    show_final_score: boolean, whether show final score on the figure. Useful
+        when overlapping curves
+    kwargs: Line2D properties, will be passed for plotting the curve
+        see https://matplotlib.org/api/_as_gen/matplotlib.lines.Line2D.html#matplotlib.lines.Line2D
+    """
+    timestamps = self.timestamps
+    scores = self.scores
+    time_budget = self.time_budget
+    task_name = self.task_name
+    alc, fig = plot_learning_curve(timestamps, scores,
+                  start_time=0, time_budget=time_budget, method=method,
+                  transform=transform, task_name=task_name,
+                  area_color=area_color,
+                  fill_area=fill_area, model_name=model_name,
+                  clear_figure=False, fig=fig,
+                  show_final_score=show_final_score, **kwargs)
+    return alc, fig
+
+  def get_alc(self, t0=60):
+    X = [transform_time(t, T=self.time_budget, t0=t0)
+         for t in self.timestamps]
+    Y = list(self.scores.copy())
+    X.insert(0, 0)
+    Y.insert(0, 0)
+    X.append(1)
+    Y.append(Y[-1])
+    alc = auc(X, Y)
+    return alc
+
+  def get_time_used(self):
+    if len(self.timestamps) > 0:
+      return self.timestamps[-1]
+    else:
+      return 0
+
+  def save_figure(self, output_dir):
+    alc, ax = self.plot()
+    fig_name = get_fig_name(self.task_name)
+    path_to_fig = os.path.join(output_dir, fig_name)
+    plt.savefig(path_to_fig)
+    plt.close()
+
+class Evaluator(object):
+
+  def __init__(self, solution_dir=None, prediction_dir=None, score_dir=None,
+               scoring_functions=None, task_name=None, participant_name=None,
+               algorithm_name=None, submission_id=None):
+    """
+    Args:
+      scoring_functions: a dict containing (string, scoring_function) pairs
+    """
+    self.start_time = time.time()
+
+    self.solution_dir = solution_dir
+    self.prediction_dir = prediction_dir
+    self.score_dir = score_dir
+    self.scoring_functions = scoring_functions
+
+    self.task_name = task_name or get_task_name(solution_dir)
+    self.participant_name = participant_name
+    self.algorithm_name = algorithm_name
+    self.submission_id = submission_id
+
+    # State variables
+    self.scoring_success = None
+    self.time_limit_exceeded = None
+    self.prediction_files_so_far = []
+    self.new_prediction_files = []
+    self.scores_so_far = {'nauc':[]}
+    self.relative_timestamps = []
+
+    # Resolve info from directories
+    self.solution = self.get_solution()
+    # Check if the task is multilabel (i.e. with one hot label)
+    self.is_multiclass_task = is_multiclass(self.solution)
+
+    self.initialize_learning_curve_page()
+    self.fetch_ingestion_info()
+    self.learning_curve = self.get_learning_curve()
+
+  def get_solution(self):
+    """Get solution as NumPy array from `self.solution_dir`."""
+    solution = get_solution(self.solution_dir)
+    logger.debug("Successfully loaded solution from solution_dir={}"\
+                 .format(self.solution_dir))
+    return solution
+
+  def initialize_learning_curve_page(self):
+    """Initialize learning curve page with a message for waiting."""
+    # Create the output directory, if it does not already exist
+    if not os.path.isdir(self.score_dir):
+      os.mkdir(self.score_dir)
+    # Initialize detailed_results.html (learning curve page)
+    detailed_results_filepath = os.path.join(self.score_dir,
+                                             'detailed_results.html')
+    html_head = '<html><head> <meta http-equiv="refresh" content="5"> ' +\
+                '</head><body><pre>'
+    html_end = '</pre></body></html>'
+    with open(detailed_results_filepath, 'a') as html_file:
+      html_file.write(html_head)
+      html_file.write("Starting training process... <br> Please be patient. " +
+                      "Learning curves will be generated when first " +
+                      "predictions are made.")
+      html_file.write(html_end)
+
+  def fetch_ingestion_info(self):
+    """Resolve some information from output of ingestion program. This includes
+    especially: `ingestion_start`, `ingestion_pid`, `time_budget`.
+
+    Raises:
+      IngestionError if no sign of ingestion starting detected after 30 seconds.
+    """
+    logger.debug("Fetching ingestion info...")
+    prediction_dir = self.prediction_dir
+    # Wait 30 seconds for ingestion to start and write 'start.txt',
+    # Otherwise, raise an exception.
+    wait_time = 30
+    ingestion_info = None
+    for i in range(wait_time):
+      ingestion_info = get_ingestion_info(prediction_dir)
+      if not ingestion_info is None:
+        logger.debug("Detected the start of ingestion after {} ".format(i) +
+                    "seconds. Start scoring.")
+        break
+      time.sleep(1)
+    else:
+      raise IngestionError("[-] Failed: scoring didn't detected the start of " +
+                           "ingestion after {} seconds.".format(wait_time))
+    # Get ingestion start time
+    ingestion_start = ingestion_info['start_time']
+    # Get ingestion PID
+    ingestion_pid = ingestion_info['ingestion_pid']
+    # Get time_budget for ingestion
+    assert 'time_budget' in ingestion_info
+    time_budget = ingestion_info['time_budget']
+    # Set attributes
+    self.ingestion_info = ingestion_info
+    self.ingestion_start = ingestion_start
+    self.ingestion_pid = ingestion_pid
+    self.time_budget = time_budget
+    logger.debug("Ingestion start time: {}".format(ingestion_start))
+    logger.debug("Scoring start time: {}".format(self.start_time))
+    logger.debug("Ingestion info successfully fetched.")
+
+  def end_file_generated(self):
+    return end_file_generated(self.prediction_dir)
+
+  def ingestion_is_alive(self):
+    return is_process_alive(self.ingestion_pid)
+
+  def kill_ingestion(self):
+    terminate_process(self.ingestion_pid)
+
+  def prediction_filename_pattern(self):
+    return "{}.predict_*".format(self.task_name)
+
+  def get_new_prediction_files(self):
+    """Fetch new prediction file(name)s found in prediction directory and update
+    corresponding attributes.
+
+    Examples of prediction file name: mini.predict_0, mini.predict_1
+
+    Returns:
+      List of new prediction files found.
+    """
+    prediction_files = ls(os.path.join(self.prediction_dir,
+                                       self.prediction_filename_pattern()))
+    logger.debug("Prediction files: {}".format(prediction_files))
+    new_prediction_files = [p for p in prediction_files
+                            if p not in self.prediction_files_so_far]
+    order_key = lambda filename: int(filename.split('_')[-1])
+    self.new_prediction_files = sorted(new_prediction_files, key=order_key)
+    return self.new_prediction_files
+
+  def compute_score_per_prediction(self):
+    """For new predictions found, compute their score using `self.solution`
+    and scoring functions in `self.scoring_functions`. Then concatenate
+    the list of new predictions to the list of resolved predictions so far.
+    """
+    for score_name in self.scoring_functions:
+      scoring_function = self.scoring_functions[score_name]
+      if score_name != 'accuracy' or self.is_multiclass_task:
+        new_scores = [scoring_function(self.solution, read_array(pred))
+                      for pred in self.new_prediction_files]
+        if score_name in self.scores_so_far:
+          self.scores_so_far[score_name] += new_scores
+        else:
+          self.scores_so_far[score_name] = new_scores
+    # If new predictions are found, update state variables
+    if self.new_prediction_files:
+      self.prediction_files_so_far += self.new_prediction_files
+      num_preds = len(self.prediction_files_so_far)
+      self.relative_timestamps = self.get_relative_timestamps()[:num_preds]
+      self.learning_curve = self.get_learning_curve()
+      self.new_prediction_files = []
+
+  def get_relative_timestamps(self):
+    """Get a list of relative timestamps. The beginning has relative timestamp
+    zero.
+    """
+    ingestion_start, timestamps = get_timestamps(self.prediction_dir)
+    relative_timestamps = [t - ingestion_start for t in timestamps]
+    return relative_timestamps
+
+  def write_score(self):
+    """Write score and duration to score_dir/scores.txt"""
+    score_dir = self.score_dir
+    score = self.learning_curve.get_alc()
+    duration = self.learning_curve.get_time_used()
+    score_filename = os.path.join(score_dir, 'scores.txt')
+    score_info_dict = {'score': score,
+                       'Duration': duration,
+                       'task_name': self.task_name,
+                       'timestamps': self.relative_timestamps,
+                       'nauc_scores': self.scores_so_far['nauc']
+                      }
+    if self.is_multiclass_task:
+      score_info_dict['accuracy'] = self.scores_so_far['accuracy']
+    with open(score_filename, 'w') as f:
+      f.write('score: ' + str(score) + '\n')
+      f.write('Duration: ' + str(duration) + '\n')
+      f.write('timestamps: {}\n'.format(self.relative_timestamps))
+      f.write('nauc_scores: {}\n'.format(self.scores_so_far['nauc']))
+      if self.is_multiclass_task:
+        f.write('accuracy: {}\n'.format(self.scores_so_far['accuracy']))
+    logger.debug("Wrote to score_filename={} with score={}, duration={}"\
+                  .format(score_filename, score, duration))
+    return score_info_dict
+
+  def write_scores_html(self, auto_refresh=True, append=False):
+    score_dir = self.score_dir
+    filename = 'detailed_results.html'
+    image_paths = sorted(ls(os.path.join(score_dir, '*.png')))
+    if auto_refresh:
+      html_head = '<html><head> <meta http-equiv="refresh" content="5"> ' +\
+                  '</head><body><pre>'
+    else:
+      html_head = """<html><body><pre>"""
+    html_end = '</pre></body></html>'
+    if append:
+      mode = 'a'
+    else:
+      mode = 'w'
+    filepath = os.path.join(score_dir, filename)
+    with open(filepath, mode) as html_file:
+        html_file.write(html_head)
+        for image_path in image_paths:
+          with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read())
+            encoded_string = encoded_string.decode('utf-8')
+            s = '<img src="data:image/png;charset=utf-8;base64,{}"/>'\
+                .format(encoded_string)
+            html_file.write(s + '<br>')
+        html_file.write(html_end)
+    logger.debug("Wrote learning curve page to {}".format(filepath))
+
+  def get_learning_curve(self, score_name='nauc'):
+    timestamps = self.relative_timestamps
+    scores = self.scores_so_far[score_name]
+    return LearningCurve(timestamps=timestamps, scores=scores,
+                         time_budget=self.time_budget,
+                         score_name=score_name, task_name=self.task_name,
+                         participant_name=self.participant_name,
+                         algorithm_name=self.algorithm_name)
+
+  def draw_learning_curve(self, **kwargs):
+    """Draw learning curve for one task and save to `score_dir`."""
+    self.compute_score_per_prediction()
+    scores = self.scores_so_far['nauc']
+    is_multiclass_task = self.is_multiclass_task
+    timestamps = self.get_relative_timestamps()
+    sorted_pairs = sorted(zip(timestamps, scores))
+    start = 0
+    time_used = -1
+    if len(timestamps) > 0:
+      time_used = sorted_pairs[-1][0] - start
+      latest_score = sorted_pairs[-1][1]
+      if is_multiclass_task:
+        accuracy_scores = self.scores_so_far['accuracy']
+        sorted_pairs_acc = sorted(zip(timestamps, accuracy_scores))
+        latest_acc = sorted_pairs_acc[-1][1]
+    X = [t for t, _ in sorted_pairs]
+    Y = [s for _, s in sorted_pairs]
+    alc, fig = plot_learning_curve(X, Y, time_budget=self.time_budget,
+                            task_name=self.task_name, **kwargs)
+    fig_name = get_fig_name(self.task_name)
+    path_to_fig = os.path.join(self.score_dir, fig_name)
+    plt.savefig(path_to_fig)
+    plt.close()
+    return alc, time_used
+
+  def update_score_and_learning_curve(self):
+    self.draw_learning_curve()
+    # Update learning curve page (detailed_results.html)
+    self.write_scores_html()
+    # Write score
+    score = self.write_score()['score']
+    return score
+
+  def compute_error_bars(self, n=10):
+    """Compute error bars on evaluation with boostrap.
+
+    Args:
+    scoring_function: callable with signature
+      scoring_function(solution, prediction)
+    solution: Numpy array, the solution (true labels).
+    predictions: Numpy array, predicted labels.
+    n: number of times to compute the score (more means more precision)
+    Returns:
+    a list of float, scores
+    """
+    try:
+        scoring_function = self.scoring_functions['nauc']
+        solution = self.solution
+        last_prediction = read_array(self.prediction_files_so_far[-1])
+        assert(len(solution) == len(last_prediction))
+        l = len(solution)
+        scores = []
+        for _ in range(n): # number of scoring
+          new_solution = []
+          new_predictions = []
+          for _ in range(l): # boostrap
+              i = randrange(l)
+              new_solution.append(solution[i])
+              new_predictions.append(last_prediction[i])
+          scores.append(scoring_function(np.array(new_solution), np.array(new_predictions)))
+        mean = np.mean(scores)
+        std = np.std(scores)
+        var = np.var(scores)
+        return mean, std, var
+    except: # not able to compute error bars
+        return -1, -1, -1
+
+  def score_new_predictions(self):
+    new_prediction_files = evaluator.get_new_prediction_files()
+    if len(new_prediction_files) > 0:
+      score = evaluator.update_score_and_learning_curve()
+      logger.info("[+] New prediction found. Now number of predictions " +
+                   "made = {}"\
+                   .format(len(evaluator.prediction_files_so_far)))
+      logger.info("Current area under learning curve for {}: {:.4f}"\
+                .format(evaluator.task_name, score))
+      logger.info("(2 * AUC - 1) of the latest prediction is {:.4f}."\
+                .format(evaluator.scores_so_far['nauc'][-1]))
+      if evaluator.is_multiclass_task:
+        logger.info("Accuracy of the latest prediction is {:.4f}."\
+                  .format(evaluator.scores_so_far['accuracy'][-1]))
+
 # =============================== MAIN ========================================
 
 if __name__ == "__main__":
-
-    scoring_start = time.time()
 
     # Default I/O directories:
     root_dir = _HERE(os.pardir)
     default_solution_dir = join(root_dir, "AutoDL_sample_data")
     default_prediction_dir = join(root_dir, "AutoDL_sample_result_submission")
     default_score_dir = join(root_dir, "AutoDL_scoring_output")
-    default_time_budget = 1200
+
     # Parse directories from input arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--solution_dir', type=str,
@@ -627,145 +859,81 @@ if __name__ == "__main__":
                         default=default_score_dir,
                         help="Directory storing the scoring output " +
                              "e.g. `scores.txt` and `detailed_results.html`.")
-    parser.add_argument('--time_budget', type=float,
-                        default=default_time_budget,
-                        help="Time budget for running ingestion program.")
     args = parser.parse_args()
     logger.debug("Parsed args are: " + str(args))
     logger.debug("-" * 50)
     solution_dir = args.solution_dir
     prediction_dir = args.prediction_dir
     score_dir = args.score_dir
-    time_budget = args.time_budget
-
-    # Create the output directory, if it does not already exist and open output files
-    if not os.path.isdir(score_dir):
-      os.mkdir(score_dir)
-    detailed_results_filepath = os.path.join(score_dir, 'detailed_results.html')
-    # Initialize detailed_results.html
-    init_scores_html(detailed_results_filepath)
-    # Write initial score to `missing_score`
-    write_score(score_dir, missing_score, duration=0)
 
     logger.debug("Version: {}. Description: {}".format(VERSION, DESCRIPTION))
     logger.debug("Using solution_dir: " + str(solution_dir))
     logger.debug("Using prediction_dir: " + str(prediction_dir))
     logger.debug("Using score_dir: " + str(score_dir))
 
-    # Wait 30 seconds for ingestion to start and write 'start.txt',
-    # Otherwise, raise an exception.
-    wait_time = 30
-    ingestion_info = None
-    for i in range(wait_time):
-      ingestion_info = get_ingestion_info(prediction_dir)
-      if not ingestion_info is None:
-        logger.info("Detected the start of ingestion after {} ".format(i) +
-                    "seconds. Start scoring.")
-        break
-      time.sleep(1)
-    else:
-      raise IngestionError("[-] Failed: scoring didn't detected the start of " +
-                           "ingestion after {} seconds.".format(wait_time))
+    #################################################################
+    # Initialize an evaluator (scoring program) object
+    evaluator = Evaluator(solution_dir, prediction_dir, score_dir,
+                          scoring_functions=scoring_functions)
+    #################################################################
 
-    # Get ingestion start time
-    ingestion_start = ingestion_info['start_time']
-    logger.debug("Ingestion start time: {}".format(ingestion_start))
-    logger.debug("Scoring start time: {}".format(scoring_start))
-    # Get ingestion PID
-    ingestion_pid = ingestion_info['ingestion_pid']
-    # Update time_budget if exists
-    if 'time_budget' in ingestion_info:
-      if not time_budget == ingestion_info['time_budget']:
-        logger.warning("Different time budgets passed to ingestion and " +
-                       "scoring. Use that of ingestion.")
-        time_budget = ingestion_info['time_budget']
-
-    # Get the metric
-    scoring_function = autodl_auc
-    metric_name = "Area under Learning Curve"
-
-    # Get all the solution
-    solution = get_solution(solution_dir)
-    # Check if the task is multilabel (i.e. with one hot label)
-    is_multiclass_task = is_multiclass(solution)
-    # Extract the dataset name from the file name
-    basename = get_task_name(solution_dir)
-
-    scoring_success = True
-    time_limit_exceeded = False
+    ingestion_start = evaluator.ingestion_start
+    time_budget = evaluator.time_budget
 
     try:
-      # Begin scoring process, along with ingestion program
-      # Moniter training processes while time budget is not attained
-      prediction_files_so_far = []
-      scores_so_far = []
-      num_preds = 0
       while(time.time() < ingestion_start + time_budget):
-        if not ingestion_is_alive(prediction_dir):
+        if evaluator.end_file_generated():
           logger.info("Detected ingestion program had stopped running " +
                       "because an 'end.txt' file is written by ingestion. " +
                       "Stop scoring now.")
+          evaluator.scoring_success = True
           break
         time.sleep(1)
-        # Get list of prediction files
-        prediction_files = get_prediction_files(prediction_dir)
-        num_preds_new = len(prediction_files)
-        if(num_preds_new > num_preds):
-          new_prediction_files = get_new_prediction_files(prediction_dir,
-                                                prediction_files_so_far)
-          new_scores = [scoring_function(solution, read_array(pred))
-                        for pred in new_prediction_files]
-          prediction_files_so_far += new_prediction_files
-          logger.info("[+] New prediction found. Now number of predictions " +
-                       "made = {}".format(num_preds_new))
-          prediction_files_so_far += new_prediction_files
-          scores_so_far += new_scores
-          score = update_score_and_learning_curve(prediction_dir,
-                                                  basename,
-                                                  ingestion_start,
-                                                  solution_dir,
-                                                  scoring_function,
-                                                  score_dir,
-                                                  is_multiclass_task)
-          num_preds = num_preds_new
-          logger.info("Current area under learning curve for {}: {:.4f}"\
-                    .format(basename, score))
+
+        ### Fetch new predictions, compute their scores and update variables ###
+        evaluator.score_new_predictions()
+        ########################################################################
+
+        logger.debug("Prediction files so far: {}"\
+                     .format(evaluator.prediction_files_so_far))
       else: # When time budget is used up, kill ingestion
-        if is_process_alive(ingestion_pid):
-          time_limit_exceeded = True
-          terminate_process(ingestion_pid)
+        if evaluator.ingestion_is_alive():
+          evaluator.time_limit_exceeded = True
+          evaluator.kill_ingestion()
           logger.info("Detected time budget is used up. Killed ingestion and " +
                       "terminating scoring...")
     except Exception as e:
-      scoring_success = False
+      evaluator.scoring_success = False
       logger.error("[-] Error occurred in scoring:\n" + str(e),
                     exc_info=True)
 
-    score = update_score_and_learning_curve(prediction_dir,
-                                            basename,
-                                            ingestion_start,
-                                            solution_dir,
-                                            scoring_function,
-                                            score_dir,
-                                            is_multiclass_task)
+    evaluator.score_new_predictions()
+
     logger.info("Final area under learning curve for {}: {:.4f}"\
-              .format(basename, score))
+              .format(evaluator.task_name, evaluator.learning_curve.get_alc()))
 
     # Write one last time the detailed results page without auto-refreshing
-    write_scores_html(score_dir, auto_refresh=False)
+    evaluator.write_scores_html(auto_refresh=False)
 
+    # Compute scoring error bars of last prediction
+    n = 10
+    logger.info("Computing error bars with {} scorings...".format(n))
+    mean, std, var = evaluator.compute_error_bars(n=n)
+    logger.info("\nLatest prediction NAUC:\n* Mean: {}\n* Standard deviation: {}\n* Variance: {}".format(mean, std, var))
+
+    scoring_start = evaluator.start_time
     # Use 'end.txt' file to detect if ingestion program ends
     end_filepath =  os.path.join(prediction_dir, 'end.txt')
-    if not scoring_success:
+    if not evaluator.scoring_success is None and not evaluator.scoring_success:
       logger.error("[-] Some error occurred in scoring program. " +
                   "Please see output/error log of Scoring Step.")
     elif not os.path.isfile(end_filepath):
-      if time_limit_exceeded:
+      if evaluator.time_limit_exceeded:
         logger.error("[-] Ingestion program exceeded time budget. " +
                      "Predictions made so far will be used for evaluation.")
       else: # Less probable to fall in this case
-        if is_process_alive(ingestion_pid):
-          terminate_process(ingestion_pid)
+        if evaluator.ingestion_is_alive():
+          evaluator.kill_ingestion()
         logger.error("[-] No 'end.txt' file is produced by ingestion. " +
                      "Ingestion or scoring may have not terminated normally.")
     else:
@@ -783,6 +951,7 @@ if __name__ == "__main__":
                   "Ingestion duration: {:.2f} sec. "\
                   .format(ingestion_duration) +
                   "The score of your algorithm on the task '{}' is: {:.6f}."\
-                  .format(basename, score))
+                  .format(evaluator.task_name,
+                          evaluator.learning_curve.get_alc()))
 
     logger.info("[Scoring terminated]")

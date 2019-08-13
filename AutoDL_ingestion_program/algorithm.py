@@ -21,6 +21,7 @@ class Algorithm(object):
   """Algorithm class: API (abstract class)."""
 
   def __init__(self, metadata):
+    self.done_training = False # Indicate ingestion to stop further training
     self.metadata_ = metadata # An AutoDLMetadata object
 
   def train(self, dataset, remaining_time_budget=None):

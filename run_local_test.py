@@ -82,7 +82,13 @@ def get_basename(path):
     path = path[:-1]
   return path.split(os.sep)[-1]
 
-def run_baseline(dataset_dir, code_dir, time_budget=7200):
+def run_baseline(dataset_dir, code_dir, time_budget=1200):
+  logging.info("#"*50)
+  logging.info("Begin running local test using")
+  logging.info("code_dir = {}".format(get_basename(code_dir)))
+  logging.info("dataset_dir = {}".format(get_basename(dataset_dir)))
+  logging.info("#"*50)
+
   # Current directory containing this script
   starting_kit_dir = os.path.dirname(os.path.realpath(__file__))
   path_ingestion = get_path_to_ingestion_program(starting_kit_dir)
@@ -93,12 +99,14 @@ def run_baseline(dataset_dir, code_dir, time_budget=7200):
     "python {} --dataset_dir={} --code_dir={} --time_budget={}"\
     .format(path_ingestion, dataset_dir, code_dir, time_budget)
   command_scoring =\
-    'python {} --solution_dir={} --time_budget={}'\
-    .format(path_scoring, dataset_dir, time_budget)
+    'python {} --solution_dir={}'\
+    .format(path_scoring, dataset_dir)
   def run_ingestion():
-    os.system(command_ingestion)
+    exit_code = os.system(command_ingestion)
+    assert exit_code == 0
   def run_scoring():
-    os.system(command_scoring)
+    exit_code = os.system(command_scoring)
+    assert exit_code == 0
   ingestion_process = Process(name='ingestion', target=run_ingestion)
   scoring_process = Process(name='scoring', target=run_scoring)
   ingestion_output_dir = os.path.join(starting_kit_dir,
@@ -122,6 +130,12 @@ def run_baseline(dataset_dir, code_dir, time_budget=7200):
       break
       time.sleep(1)
 
+  ingestion_process.join()
+  scoring_process.join()
+  if not ingestion_process.exitcode == 0:
+    logging.info("Some error occurred in ingestion program.")
+  if not scoring_process.exitcode == 0:
+    raise Exception("Some error occurred in scoring program.")
 
 if __name__ == '__main__':
   default_starting_kit_dir = _HERE()
@@ -151,9 +165,5 @@ if __name__ == '__main__':
   dataset_dir = FLAGS.dataset_dir
   code_dir = FLAGS.code_dir
   time_budget = FLAGS.time_budget
-  logging.info("#"*50)
-  logging.info("Begin running local test using")
-  logging.info("code_dir = {}".format(get_basename(code_dir)))
-  logging.info("dataset_dir = {}".format(get_basename(dataset_dir)))
-  logging.info("#"*50)
+
   run_baseline(dataset_dir, code_dir, time_budget)
