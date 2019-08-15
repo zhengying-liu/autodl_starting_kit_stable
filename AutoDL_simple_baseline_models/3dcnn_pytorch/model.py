@@ -1,3 +1,29 @@
+# Copyright 2016 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# Modified by: Shangeth Rajaa, Zhengying Liu, Isabelle Guyon
+
+"""An example of code submission for the AutoDL challenge.
+
+It implements 3 compulsory methods ('__init__', 'train' and 'test') and
+an attribute 'done_training' for indicating if the model will not proceed more
+training due to convergence or limited time budget.
+
+To create a valid submission, zip model.py together with other necessary files
+such as Python modules/packages, pre-trained weights, etc. The final zip file
+should not exceed 300MB.
+"""
+
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
 import datetime
@@ -12,11 +38,14 @@ import torch.nn as nn
 import torchvision
 import tensorflow as tf
 
+# seeding randomness for reproducibility
 np.random.seed(42)
 torch.manual_seed(1)
 
+# PyTorch Model class
 class TorchModel(nn.Module):
   def __init__(self, input_shape, output_dim):
+    ''' 3D CNN Model with no of CNN layers depending on the input size'''
     super(TorchModel, self).__init__()
     self.conv = torch.nn.Sequential()
     cnn_ch = 16
@@ -32,6 +61,7 @@ class TorchModel(nn.Module):
       self.conv.add_module('pool{}'.format(i), nn.MaxPool3d(2,2))
       i += 1
       n_size, out_len = self.get_fc_size(input_shape)
+      # no more CNN layers if Linear layers get input size < 1000
       if  n_size < 1000 or out_len[3] < 3 or out_len[3] < 3:
         break
 
@@ -43,6 +73,9 @@ class TorchModel(nn.Module):
     return x
 
   def get_fc_size(self, input_shape):
+    ''' function to get the size for Linear layers 
+    with given number of CNN layers
+    '''
     sample_input = Variable(torch.rand(1, *input_shape))
     output_feat = self.forward_cnn(sample_input)
     out_shape = output_feat.shape
@@ -56,6 +89,7 @@ class TorchModel(nn.Module):
     return x
 
 
+# PyTorch Dataset to get data from tensorflow Dataset.
 class TFDataset(torch.utils.data.Dataset):
   def __init__(self, dataset, session, num_samples):
     super(TFDataset, self).__init__()
@@ -83,12 +117,21 @@ class TFDataset(torch.utils.data.Dataset):
       example, label = session.run(self.next_element)
     return example.transpose(3,0,1,2), label
 
+
+
+
 class Model():
   def __init__(self, metadata):
+    """
+    Args:
+      metadata: an AutoDLMetadata object. Its definition can be found in
+          AutoDL_ingestion_program/dataset.py
+    """
     # Attribute necessary for ingestion program to stop evaluation process
     self.done_training = False
     self.metadata_ = metadata
 
+    # Getting details of the data from meta data
     self.output_dim = self.metadata_.get_output_size()
     self.num_examples_train = self.metadata_.size()
     row_count, col_count = self.metadata_.get_matrix_size(0)
@@ -102,6 +145,7 @@ class Model():
                      in open(test_metadata_filename, 'r').readlines()
                      if 'sample_count' in line][0]
 
+    # Getting the device available
     self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Device Found = ', self.device,
           '\nMoving Model and Data into the device...')
@@ -125,6 +169,7 @@ class Model():
     print(self.pytorchmodel)
     self.pytorchmodel.to(self.device)
 
+    # PyTorch Optimizer and Criterion
     self.criterion = nn.BCEWithLogitsLoss()
     self.optimizer = torch.optim.Adam(self.pytorchmodel.parameters(), lr=1e-2)
 
@@ -147,10 +192,54 @@ class Model():
     self.train_batch_size = 30
     self.test_batch_size = 30
 
+    # Tensorflow sessions to get the data from TFDataset
     self.train_session = tf.Session()
     self.test_session = tf.Session()
 
   def train(self, dataset, remaining_time_budget=None):
+    """Train this algorithm on the tensorflow |dataset|.
+
+    This method will be called REPEATEDLY during the whole training/predicting
+    process. So your `train` method should be able to handle repeated calls and
+    hopefully improve your model performance after each call.
+
+    ****************************************************************************
+    ****************************************************************************
+    IMPORTANT: the loop of calling `train` and `test` will only run if
+        self.done_training = False
+      (the corresponding code can be found in ingestion.py, search
+      'M.done_training')
+      Otherwise, the loop will go on until the time budget is used up. Please
+      pay attention to set self.done_training = True when you think the model is
+      converged or when there is not enough time for next round of training.
+    ****************************************************************************
+    ****************************************************************************
+
+    Args:
+      dataset: a `tf.data.Dataset` object. Each of its examples is of the form
+            (example, labels)
+          where `example` is a dense 4-D Tensor of shape
+            (sequence_size, row_count, col_count, num_channels)
+          and `labels` is a 1-D Tensor of shape
+            (output_dim,).
+          Here `output_dim` represents number of classes of this
+          multilabel classification task.
+
+          IMPORTANT: some of the dimensions of `example` might be `None`,
+          which means the shape on this dimension might be variable. In this
+          case, some preprocessing technique should be applied in order to
+          feed the training of a neural network. For example, if an image
+          dataset has `example` of shape
+            (1, None, None, 3)
+          then the images in this datasets may have different sizes. On could
+          apply resizing, cropping or padding in order to have a fixed size
+          input tensor.
+
+      remaining_time_budget: time remaining to execute train(). The method
+          should keep track of its execution time to avoid exceeding its time
+          budget. If remaining_time_budget is None, no time budget is imposed.
+    """
+
     steps_to_train = self.get_steps_to_train(remaining_time_budget)
     if steps_to_train <= 0:
       logger.info("Not enough time remaining for training. " +
@@ -167,11 +256,12 @@ class Model():
                   "{:.2f} sec.".format(steps_to_train * self.estimated_time_per_step)
       logger.info("Begin training for another {} steps...{}".format(steps_to_train, msg_est))
 
+      # If PyTorch dataloader for training set doen't already exists, get the train dataloader
       if not hasattr(self, 'trainloader'):
         self.trainloader = self.get_dataloader(dataset, self.num_train, batch_size=self.train_batch_size)
       train_start = time.time()
 
-      #Training loop inside
+      # Training loop
       self.trainloop(self.criterion, self.optimizer, steps=steps_to_train)
       train_end = time.time()
 
@@ -186,6 +276,16 @@ class Model():
             "Current estimated time per step: {:.2e} sec.".format(self.estimated_time_per_step))
 
   def test(self, dataset, remaining_time_budget=None):
+    """Test this algorithm on the tensorflow |dataset|.
+
+    Args:
+      Same as that of `train` method, except that the `labels` will be empty.
+    Returns:
+      predictions: A `numpy.ndarray` matrix of shape (sample_count, output_dim).
+          here `sample_count` is the number of examples in this dataset as test
+          set and `output_dim` is the number of labels to be predicted. The
+          values should be binary or in the interval [0,1].
+    """
     if self.done_training:
       return None
 
@@ -206,10 +306,12 @@ class Model():
       msg_est = "estimated time: {:.2e} sec.".format(self.estimated_time_test)
     logger.info("Begin testing..." + msg_est)
 
-    # PYTORCH
+    # If PyTorch dataloader for training set doen't already exists, get the test dataloader
     if not hasattr(self, 'testloader'):
         self.testloader = self.get_dataloader_test(dataset, self.num_test,
                                                    self.test_batch_size)
+
+    # get predictions from the test loop
     predictions = self.testloop(self.testloader)
 
     test_end = time.time()
@@ -269,6 +371,15 @@ class Model():
     return tensor_4d
 
   def get_dataloader(self, tf_dataset, num_images, batch_size):
+    ''' Get the training PyTorch dataloader
+    Args:
+      tf_dataset: Tensorflow Dataset which is given in train function
+      num_images : number of examples in train data
+      batch_size : batch_size for training set
+
+    Return:
+      dataloader: PyTorch Training Dataloader
+    '''
     tf_dataset = tf_dataset.map(lambda *x: (self.preprocess_tensor_4d(x[0]), x[1]))
     train_dataset = TFDataset(tf_dataset, self.train_session, num_images)
     dataloader = torch.utils.data.DataLoader(
@@ -280,12 +391,30 @@ class Model():
     return dataloader
 
   def get_dataloader_test(self, tf_dataset, num_images, batch_size):
+    ''' Get the test PyTorch dataloader
+    Args:
+      tf_dataset: Tensorflow Dataset which is given in test function
+      num_images : number of examples in test data
+      batch_size : batch_size for test set
+
+    Return:
+      dataloader: PyTorch Test Dataloader
+    '''
     tf_dataset = tf_dataset.map(lambda *x: (self.preprocess_tensor_4d(x[0]), x[1]))
     dataset = TFDataset(tf_dataset, self.test_session, num_images)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
     return dataloader
 
   def trainloop(self, criterion, optimizer, steps):
+    ''' Training loop with no of given steps
+    Args:
+      criterion: PyTorch Loss function
+      Optimizer: PyTorch optimizer for training
+      steps: No of steps to train the model
+    
+    Return:
+      None, updates the model parameters
+    '''
     self.pytorchmodel.train()
     data_iterator = iter(self.trainloader)
     for i in range(steps):
@@ -303,7 +432,6 @@ class Model():
       loss = criterion(log_ps, labels)
       if hasattr(self, 'scheduler'):
           self.scheduler.step(loss)
-    #   print('Train Loss = ',loss.item())
       loss.backward()
       optimizer.step()
 
@@ -337,6 +465,13 @@ class Model():
     return steps_to_train
 
   def testloop(self, dataloader):
+    '''
+    Args:
+      dataloader: PyTorch test dataloader
+    
+    Return:
+      preds: Predictions of the model as Numpy Array.
+    '''
     preds = []
     with torch.no_grad():
       self.pytorchmodel.eval()
