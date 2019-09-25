@@ -130,11 +130,13 @@ message DataSpecification {
   map<string, int32> label_to_index_map = 4;
   // Mapping between int and human-readable feature names.
   map<string, int32> feature_to_index_map = 5;
+  // Mapping between int and human-readable channel names.
+  map<string, int32> channel_to_index_map = 6;
   // Size of the sequence of matrix bundles.
   // If the size of a sample is less than sequence_size it will be
   // padded with a 0-value matrices. Any bundle after sequence_size will
   // be dropped.
-  optional int32 sequence_size = 6 [default = 1];
+  optional int32 sequence_size = 7 [default = 1];
   // Number of samples in this dataset.
-  optional int32 sample_count = 7;
+  optional int32 sample_count = 8;
 }

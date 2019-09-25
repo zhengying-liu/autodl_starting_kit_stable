@@ -100,6 +100,9 @@ class AutoDLMetadata(object):
   def get_label_to_index_map(self):
     return self.metadata_.label_to_index_map
 
+  def get_channel_to_index_map(self):
+    return self.metadata_.channel_to_index_map
+
   def get_feature_to_index_map(self):
     return self.metadata_.feature_to_index_map
 
@@ -155,6 +158,8 @@ class AutoDLDataset(object):
         sequence_features[self._feature_key(
             i, "sparse_row_index")] = tf.VarLenFeature(tf.int64)
         sequence_features[self._feature_key(
+            i, "sparse_channel_index")] = tf.VarLenFeature(tf.int64)
+        sequence_features[self._feature_key(
             i, "sparse_value")] = tf.VarLenFeature(tf.float32)
       elif self.metadata_.is_compressed(i):
         sequence_features[self._feature_key(
@@ -207,24 +212,30 @@ class AutoDLDataset(object):
       if key_sparse_val in features:
         key_sparse_col = self._feature_key(i, "sparse_col_index")
         key_sparse_row = self._feature_key(i, "sparse_row_index")
+        key_sparse_channel = self._feature_key(i, "sparse_channel_index")
         sparse_col = features[key_sparse_col].values
         sparse_row = features[key_sparse_row].values
+        try: # For back-compatibility. Before, there was no channel dimension.
+          sparse_channel = features[key_sparse_channel].values
+        except:
+          sparse_channel = [0] * len(sparse_col)
         sparse_val = features[key_sparse_val]
         indices = sparse_val.indices
         indices = tf.concat([
             tf.reshape(indices[:, 0], [-1, 1]),
             tf.reshape(sparse_row, [-1, 1]),
-            tf.reshape(sparse_col, [-1, 1])
+            tf.reshape(sparse_col, [-1, 1]),
+            tf.reshape(sparse_channel, [-1, 1])
         ], 1)
         sparse_tensor = tf.sparse_reorder(
             tf.SparseTensor(
                 indices, sparse_val.values,
-                [sequence_size, row_count, col_count]))
+                [sequence_size, row_count, col_count, num_channels]))
         # TODO: see how we can keep sparse tensors instead of
         # returning dense ones.
         tensor = tf.sparse_tensor_to_dense(sparse_tensor)
-        tensor = tf.reshape(tensor,
-                  [sequence_size, row_count, col_count, 1])
+        # tensor = tf.reshape(tensor,
+        #           [sequence_size, row_count, col_count, num_channels])
         sample.append(tensor)
 
     labels = tf.sparse_to_dense(

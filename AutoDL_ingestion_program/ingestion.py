@@ -6,7 +6,7 @@
 
 # AS A PARTICIPANT, DO NOT MODIFY THIS CODE.
 
-VERSION = 'v20190709'
+VERSION = 'v20190820'
 DESCRIPTION =\
 """This is the "ingestion program" written by the organizers. It takes the
 code written by participants (with `model.py`) and one dataset as input,
@@ -14,6 +14,8 @@ run the code on the dataset and produce predictions on test set. For more
 information on the code/directory structure, please see comments in this
 code (ingestion.py) and the README file of the starting kit.
 Previous updates:
+20190820: [ZY] Mark the beginning of ingestion right before model.py to reduce
+               variance
 20190708: [ZY] Integrate Julien's parallel data loader
 20190516: [ZY] Change time budget to 20 minutes.
 20190508: [ZY] Add time_budget to 'start.txt'
@@ -176,10 +178,6 @@ class BadPredictionShapeError(Exception):
 # =========================== BEGIN PROGRAM ================================
 
 if __name__=="__main__":
-    # Mark starting time of ingestion
-    start = time.time()
-    logger.info("="*5 + " Start ingestion program. " +
-                "Version: {} ".format(VERSION) + "="*5)
 
     #### Check whether everything went well
     ingestion_success = True
@@ -268,9 +266,6 @@ if __name__=="__main__":
 
     basename = datanames[0]
 
-    write_start_file(output_dir, start_time=start, time_budget=time_budget,
-                     task_name=basename.split('.')[0])
-
     logger.info("************************************************")
     logger.info("******** Processing dataset " + basename[:-5].capitalize() +
                  " ********")
@@ -288,11 +283,18 @@ if __name__=="__main__":
     output_dim = D_test.get_metadata().get_output_size()
     correct_prediction_shape = (num_examples_test, output_dim)
 
+    # Mark starting time of ingestion
+    start = time.time()
+    logger.info("="*5 + " Start core part of ingestion program. " +
+                "Version: {} ".format(VERSION) + "="*5)
+
+    write_start_file(output_dir, start_time=start, time_budget=time_budget,
+                     task_name=basename.split('.')[0])
+
     try:
-      # ========= Creating a model
-      from model import Model # in participants' model.py
       ##### Begin creating model #####
       logger.info("Creating model...")
+      from model import Model # in participants' model.py
       M = Model(D_train.get_metadata()) # The metadata of D_train and D_test only differ in sample_count
       ###### End creating model ######
 

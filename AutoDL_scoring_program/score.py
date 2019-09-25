@@ -7,12 +7,15 @@
 #           prediction_dir should contain e.g. start.txt, adult.predict_0, adult.predict_1,..., end.txt.
 #           score_dir should contain scores.txt, detailed_results.html
 
-VERSION = 'v20190709'
+VERSION = 'v20190908'
 DESCRIPTION =\
 """This is the scoring program for AutoDL challenge. It takes the predictions
 made by ingestion program as input and compare to the solution file and produce
 a learning curve.
 Previous updates:
+20190908: [ZY] Add algebraic operations of learning curves
+20190823: [ZY] Fix the ALC in learning curve: use auc_step instead of auc
+20190820: [ZY] Minor fix: change wait time (for ingestion) from 30s to 90s
 20190709: [ZY] Resolve all issues; rearrange some logging messages;
                simplify main function; fix exit_code of run_local_test.py;
 20190708: [ZY] Write the class Evaluator for object-oriented scoring program
@@ -228,6 +231,7 @@ def plot_learning_curve(timestamps, scores,
                         transform=None, task_name=None,
                         area_color='cyan', fill_area=True, model_name=None,
                         clear_figure=True, fig=None, show_final_score=True,
+                        show_title=True,
                         **kwargs):
   """Plot learning curve using scores and corresponding timestamps.
 
@@ -248,6 +252,7 @@ def plot_learning_curve(timestamps, scores,
     clear_figure: boolean, clear previous figures or not
     fig: the figure to plot on
     show_final_score: boolean, show the last score or not
+    show_title: boolean, show the plot title or not
     kwargs: Line2D properties, optional
   Returns:
     alc: float, the area under learning curve.
@@ -300,7 +305,8 @@ def plot_learning_curve(timestamps, scores,
   if fig is None or len(fig.axes) == 0:
     fig = plt.figure(figsize=(7, 7.07))
     ax = fig.add_subplot(111)
-    plt.title("Learning curve for task: {}".format(task_name), y=1.06)
+    if show_title:
+      plt.title("Learning curve for task: {}".format(task_name), y=1.06)
     ax.set_xlabel(xlabel)
     ax.set_xlim(left=0, right=1)
     ax.set_ylabel('score (2 * AUC - 1)')
@@ -338,7 +344,9 @@ def plot_learning_curve(timestamps, scores,
     kwargs['marker'] = 'o'
   if 'markersize' not in kwargs:
     kwargs['markersize'] = 3
-  ax.plot(X[:-1], Y[:-1], drawstyle=drawstyle, label=label, **kwargs)
+  if 'label' not in kwargs:
+    kwargs['label'] = label
+  ax.plot(X[:-1], Y[:-1], drawstyle=drawstyle, **kwargs)
   # Fill area under the curve
   if fill_area:
     ax.fill_between(X, Y, color='cyan', step=step)
@@ -349,6 +357,7 @@ def plot_learning_curve(timestamps, scores,
   kwargs['linestyle'] = '--'
   kwargs['linewidth'] = 1
   kwargs['marker'] = None
+  kwargs.pop('label', None)
   ax.plot(X[-2:], Y[-2:], **kwargs)
   ax.legend()
   return alc, fig
@@ -465,11 +474,103 @@ class LearningCurve(object):
     """
     self.timestamps = timestamps or [] # relative timestamps
     self.scores = scores or []
+    if len(self.timestamps) != len(self.scores):
+      raise ValueError("The number of timestamps should be equal to " +
+                       "the number of scores, but got " +
+                       "{} and {}".format(len(self.timestamps),
+                                          len(self.scores)))
     self.time_budget = time_budget
     self.score_name = score_name or 'nauc'
     self.task_name = task_name
     self.participant_name = participant_name
     self.algorithm_name = algorithm_name
+
+  def __repr__(self):
+    return "Learning curve for: participant={}, task={}"\
+           .format(self.participant_name, self.task_name)
+
+  def __add__(self, lc):
+    if not isinstance(lc, LearningCurve):
+      raise ValueError("Can only add two learning curves but got {}."\
+                       .format(type(lc)))
+    if self.time_budget != lc.time_budget:
+      raise ValueError("Cannot add two learning curves of different " +
+                       "time budget: {} and {}!"\
+                       .format(self.time_budget, lc.time_budget))
+    else:
+      time_budget = self.time_budget
+    if self.score_name != lc.score_name:
+      raise ValueError("Cannot add two learning curves of different " +
+                       "score names: {} and {}!"\
+                       .format(self.score_name, lc.score_name))
+    else:
+      score_name = self.score_name
+    task_name = self.task_name if self.task_name == lc.task_name else None
+    participant_name = self.participant_name \
+                       if self.participant_name == lc.participant_name else None
+    algorithm_name = self.algorithm_name \
+                       if self.algorithm_name == lc.algorithm_name else None
+    # Begin merging scores and timestamps
+    new_timestamps = []
+    new_scores = []
+    # Indices of next point to add
+    i = 0
+    j = 0
+    while i < len(self.timestamps) or j < len(lc.timestamps):
+      # When two timestamps are close, append only one timestamp
+      if i < len(self.timestamps) and j < len(lc.timestamps) and \
+        np.isclose(self.timestamps[i], lc.timestamps[j]):
+        new_timestamps.append(self.timestamps[i])
+        new_scores.append(self.scores[i] + lc.scores[j])
+        i += 1
+        j += 1
+        continue
+      # In some cases, use the timestamp/score of this learning curve
+      if j == len(lc.timestamps) or \
+        (i < len(self.timestamps) and self.timestamps[i] < lc.timestamps[j]):
+        new_timestamps.append(self.timestamps[i])
+        other_score = 0 if j == 0 else lc.scores[j - 1]
+        new_scores.append(self.scores[i] + other_score)
+        i += 1
+      # In other cases, use the timestamp/score of the other learning curve
+      else:
+        new_timestamps.append(lc.timestamps[j])
+        this_score = 0 if i == 0 else self.scores[i - 1]
+        new_scores.append(this_score + lc.scores[j])
+        j += 1
+    new_lc = LearningCurve(timestamps=new_timestamps,
+                           scores=new_scores,
+                           time_budget=time_budget,
+                           score_name=score_name,
+                           task_name=task_name,
+                           participant_name=participant_name,
+                           algorithm_name=algorithm_name)
+    return new_lc
+
+  def __mul__(self, real_number):
+    if isinstance(real_number, int):
+      real_number = float(real_number)
+    if not isinstance(real_number, float):
+      raise ValueError("Can only multiply a learning curve by a float but got" +
+                       " {}.".format(type(real_number)))
+    new_scores = [real_number * s for s in self.scores]
+    new_lc = LearningCurve(timestamps=self.timestamps,
+                           scores=new_scores,
+                           time_budget=self.time_budget,
+                           score_name=self.score_name,
+                           task_name=self.task_name,
+                           participant_name=self.participant_name,
+                           algorithm_name=self.algorithm_name)
+    return new_lc
+
+  def __neg__(self):
+    return self * (-1)
+
+  def __sub__(self, other):
+    return self + (-other)
+
+  def __truediv__(self, real_number):
+    return self * (1 / real_number)
 
   def plot(self, method='step', transform=None,
            area_color='cyan', fill_area=True, model_name=None,
@@ -504,7 +605,7 @@ class LearningCurve(object):
                   show_final_score=show_final_score, **kwargs)
     return alc, fig
 
-  def get_alc(self, t0=60):
+  def get_alc(self, t0=60, method='step'):
     X = [transform_time(t, T=self.time_budget, t0=t0)
          for t in self.timestamps]
     Y = list(self.scores.copy())
@@ -512,12 +613,22 @@ class LearningCurve(object):
     Y.insert(0, 0)
     X.append(1)
     Y.append(Y[-1])
-    alc = auc(X, Y)
+    if method == 'step':
+      auc_func = auc_step
+    elif method == 'trapez':
+      auc_func = auc
+    alc = auc_func(X, Y)
     return alc
 
   def get_time_used(self):
     if len(self.timestamps) > 0:
       return self.timestamps[-1]
+    else:
+      return 0
+
+  def get_final_score(self):
+    if len(self.scores) > 0:
+      return self.scores[-1]
     else:
       return 0
 
@@ -596,13 +707,13 @@ class Evaluator(object):
     especially: `ingestion_start`, `ingestion_pid`, `time_budget`.
 
     Raises:
-      IngestionError if no sign of ingestion starting detected after 30 seconds.
+      IngestionError if no sign of ingestion starting detected after 90 seconds.
     """
     logger.debug("Fetching ingestion info...")
     prediction_dir = self.prediction_dir
-    # Wait 30 seconds for ingestion to start and write 'start.txt',
+    # Wait 90 seconds for ingestion to start and write 'start.txt',
     # Otherwise, raise an exception.
-    wait_time = 30
+    wait_time = 90
     ingestion_info = None
     for i in range(wait_time):
       ingestion_info = get_ingestion_info(prediction_dir)
@@ -837,6 +948,8 @@ class Evaluator(object):
 # =============================== MAIN ========================================
 
 if __name__ == "__main__":
+    logger.info("="*5 + " Start scoring program. " +
+                "Version: {} ".format(VERSION) + "="*5)
 
     # Default I/O directories:
     root_dir = _HERE(os.pardir)
