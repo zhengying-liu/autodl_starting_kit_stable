@@ -7,12 +7,13 @@
 #           prediction_dir should contain e.g. start.txt, adult.predict_0, adult.predict_1,..., end.txt.
 #           score_dir should contain scores.txt, detailed_results.html
 
-VERSION = 'v20190908'
+VERSION = 'v20191204'
 DESCRIPTION =\
 """This is the scoring program for AutoDL challenge. It takes the predictions
 made by ingestion program as input and compare to the solution file and produce
 a learning curve.
 Previous updates:
+20191204: [ZY] Set scoring waiting time to 30min (1800s)
 20190908: [ZY] Add algebraic operations of learning curves
 20190823: [ZY] Fix the ALC in learning curve: use auc_step instead of auc
 20190820: [ZY] Minor fix: change wait time (for ingestion) from 30s to 90s
@@ -423,6 +424,23 @@ def get_scores(scoring_function, solution, predictions):
   scores = [scoring_function(solution, pred) for pred in predictions]
   return scores
 
+def compute_scores_bootstrap(scoring_function, solution, prediction, n=10):
+    """Compute a list of scores using bootstrap.
+
+       Args:
+         scoring function: scoring metric taking y_true and y_pred
+         solution: ground truth vector
+         prediction: proposed solution
+         n: number of scores to compute
+    """
+    scores = []
+    l = len(solution)
+    for _ in range(n): # number of scoring
+      size = solution.shape[0]
+      idx = np.random.randint(0, size, size) # bootstrap index
+      scores.append(scoring_function(solution[idx], prediction[idx]))
+    return scores
+
 def end_file_generated(prediction_dir):
   """Check if ingestion is still alive by checking if the file 'end.txt'
   is generated in the folder of predictions.
@@ -707,18 +725,19 @@ class Evaluator(object):
     especially: `ingestion_start`, `ingestion_pid`, `time_budget`.
 
     Raises:
-      IngestionError if no sign of ingestion starting detected after 90 seconds.
+      IngestionError if no sign of ingestion starting detected after 1800
+      seconds.
     """
     logger.debug("Fetching ingestion info...")
     prediction_dir = self.prediction_dir
-    # Wait 90 seconds for ingestion to start and write 'start.txt',
+    # Wait 1800 seconds for ingestion to start and write 'start.txt',
     # Otherwise, raise an exception.
-    wait_time = 90
+    wait_time = 1800
     ingestion_info = None
     for i in range(wait_time):
       ingestion_info = get_ingestion_info(prediction_dir)
       if not ingestion_info is None:
-        logger.debug("Detected the start of ingestion after {} ".format(i) +
+        logger.info("Detected the start of ingestion after {} ".format(i) +
                     "seconds. Start scoring.")
         break
       time.sleep(1)
@@ -749,6 +768,7 @@ class Evaluator(object):
 
   def kill_ingestion(self):
     terminate_process(self.ingestion_pid)
+    assert not self.ingestion_is_alive()
 
   def prediction_filename_pattern(self):
     return "{}.predict_*".format(self.task_name)
@@ -807,7 +827,7 @@ class Evaluator(object):
     score = self.learning_curve.get_alc()
     duration = self.learning_curve.get_time_used()
     score_filename = os.path.join(score_dir, 'scores.txt')
-    score_info_dict = {'score': score,
+    score_info_dict = {'score': score, # ALC
                        'Duration': duration,
                        'task_name': self.task_name,
                        'timestamps': self.relative_timestamps,
@@ -897,38 +917,52 @@ class Evaluator(object):
     return score
 
   def compute_error_bars(self, n=10):
-    """Compute error bars on evaluation with boostrap.
+    """Compute error bars on evaluation with bootstrap.
 
     Args:
-    scoring_function: callable with signature
-      scoring_function(solution, prediction)
-    solution: Numpy array, the solution (true labels).
-    predictions: Numpy array, predicted labels.
-    n: number of times to compute the score (more means more precision)
+        n: number of times to compute the score (more means more precision)
     Returns:
-    a list of float, scores
+        (mean, std, var)
     """
     try:
         scoring_function = self.scoring_functions['nauc']
         solution = self.solution
         last_prediction = read_array(self.prediction_files_so_far[-1])
-        assert(len(solution) == len(last_prediction))
-        l = len(solution)
-        scores = []
-        for _ in range(n): # number of scoring
-          new_solution = []
-          new_predictions = []
-          for _ in range(l): # boostrap
-              i = randrange(l)
-              new_solution.append(solution[i])
-              new_predictions.append(last_prediction[i])
-          scores.append(scoring_function(np.array(new_solution), np.array(new_predictions)))
-        mean = np.mean(scores)
-        std = np.std(scores)
-        var = np.var(scores)
-        return mean, std, var
+        scores = compute_scores_bootstrap(scoring_function, solution, last_prediction, n=n)
+        return np.mean(scores), np.std(scores), np.var(scores)
     except: # not able to compute error bars
         return -1, -1, -1
+
+  def compute_alc_error_bars(self, n=10):
+      """ Return mean, std and variance of ALC score with n runs.
+          n curves are created:
+              For each timestamp, the value of AUC is computed from boostraps of y_true and y_pred.
+              During one curve building, we keep the same boostrap index for each prediction timestamp.
+
+          Args:
+              n: number of times to compute the score (more means more precision)
+          Returns:
+              (mean, std, var)
+      """
+      try:
+          scoring_function = self.scoring_functions['nauc']
+          solution = self.solution
+          alc_scores = []
+          for _ in range(n): # n learning curves to compute
+              scores = []
+              size = solution.shape[0]
+              idx = np.random.randint(0, size, size) # bootstrap index
+              for prediction_file in self.prediction_files_so_far:
+                  prediction = read_array(prediction_file)
+                  scores.append(scoring_function(solution[idx], prediction[idx]))
+              # create new learning curve
+              learning_curve = LearningCurve(timestamps=self.relative_timestamps, # self.learning_curve.timestamps,
+                                             scores=scores, # list of AUC scores
+                                             time_budget=self.time_budget)
+              alc_scores.append(learning_curve.get_alc())
+          return np.mean(alc_scores), np.std(alc_scores), np.var(alc_scores)
+      except: # not able to compute error bars
+          return -1, -1, -1
 
   def score_new_predictions(self):
     new_prediction_files = evaluator.get_new_prediction_files()
@@ -1033,6 +1067,12 @@ if __name__ == "__main__":
     logger.info("Computing error bars with {} scorings...".format(n))
     mean, std, var = evaluator.compute_error_bars(n=n)
     logger.info("\nLatest prediction NAUC:\n* Mean: {}\n* Standard deviation: {}\n* Variance: {}".format(mean, std, var))
+
+    # Compute ALC error bars
+    n = 5
+    logger.info("Computing ALC error bars with {} curves...".format(n))
+    mean, std, var = evaluator.compute_alc_error_bars(n=n)
+    logger.info("\nArea under Learning Curve:\n* Mean: {}\n* Standard deviation: {}\n* Variance: {}".format(mean, std, var))
 
     scoring_start = evaluator.start_time
     # Use 'end.txt' file to detect if ingestion program ends

@@ -16,6 +16,9 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+# for wav files
+import librosa
+from playsound import playsound
 
 def _HERE(*args):
     h = os.path.dirname(os.path.realpath(__file__))
@@ -39,8 +42,8 @@ class DataBrowser(object):
 
   def __init__(self, dataset_dir):
     self.dataset_dir = os.path.expanduser(dataset_dir) # Expand the tilde `~/`
-    self.domain = self.infer_domain()
     self.d_train, self.d_test, self.other_info = self.read_data()
+    self.domain = self.infer_domain()
 
   def read_data(self):
     """Given a dataset directory, read and return training/test set data as
@@ -58,7 +61,8 @@ class DataBrowser(object):
     dataset_dir = self.dataset_dir
     files = os.listdir(dataset_dir)
     data_files = [x for x in files if x.endswith('.data')]
-    assert len(data_files) == 1
+    if not len(data_files) == 1:
+      raise ValueError("0 or multiple data files are found.")
     dataset_name = data_files[0][:-5]
     solution_files = [x for x in files if x.endswith('.solution')]
     with_solution = None # With or without solution (i.e. training or test)
@@ -74,13 +78,18 @@ class DataBrowser(object):
     else:
       return ValueError("Multiple solution files found:" +\
                         " {}".format(solution_files))
+    tf.logging.info("Reading training data and test data as AutoDLDataset " +
+                "objects... (for text datasets this could take a while)")
     d_train = AutoDLDataset(os.path.join(dataset_dir, dataset_name + '.data',
                                          "train"))
     d_test = AutoDLDataset(os.path.join(dataset_dir, dataset_name + '.data',
                                         "test"))
+    tf.logging.info("Successfully read training data and test data.")
     other_info = {}
     other_info['dataset_name'] = dataset_name
     other_info['with_solution'] = with_solution
+
+    # Get list of classes
     label_to_index_map = d_train.get_metadata().get_label_to_index_map()
     if label_to_index_map:
       classes_list = [None] * len(label_to_index_map)
@@ -91,6 +100,19 @@ class DataBrowser(object):
     else:
       tf.logging.info("No label_to_index_map found in metadata. Labels will "
                       "only be represented by integers.")
+
+    # Get list of channel names
+    channel_to_index_map = d_train.get_metadata().get_channel_to_index_map()
+    if channel_to_index_map:
+      channels_list = [None] * len(channel_to_index_map)
+      for channel in channel_to_index_map:
+        index = channel_to_index_map[channel]
+        channels_list[index] = channel
+      other_info['channels_list'] = channels_list
+    else:
+      tf.logging.info("No channel_to_index_map found in metadata. Channels will"
+                      "only be represented by integers.")
+
     self.d_train, self.d_test, self.other_info = d_train, d_test, other_info
     if with_solution:
       solution_path = os.path.join(dataset_dir, solution_files[0])
@@ -99,10 +121,11 @@ class DataBrowser(object):
 
   def infer_domain(self):
     """Infer the domain from the shape of the 4-D tensor."""
-    d_train, _, _ = self.read_data()
+    d_train = self.d_train
     metadata = d_train.get_metadata()
     row_count, col_count = metadata.get_matrix_size(0)
     sequence_size = metadata.get_sequence_size()
+    channel_to_index_map = dict(metadata.get_channel_to_index_map())
     domain = None
     if sequence_size == 1:
       if row_count == 1 or col_count == 1:
@@ -111,9 +134,10 @@ class DataBrowser(object):
         domain = "image"
     else:
       if row_count == 1 and col_count == 1:
-        domain = "speech"
-      elif row_count == 1 or col_count == 1:
-        domain = "text"
+        if channel_to_index_map:
+          domain = "text"
+        else:
+          domain = "speech"
       else:
         domain = "video"
     self.domain = domain
@@ -165,6 +189,57 @@ class DataBrowser(object):
     return plt
 
   @classmethod
+  def show_speech(cls, tensor_4d, label_confidence_pairs=None):
+      """Play audio and display labels."""
+      data = np.squeeze(tensor_4d)
+      print('Playing audio...')
+      DataBrowser.play_sound(data)
+      print('Done. Now opening labels window.')
+      plt.title('Labels: ' + str(label_confidence_pairs))
+      plt.show()
+      return plt
+
+  def show_text(self, tensor_4d, label_confidence_pairs=None):
+    """Print a text example (i.e. a document) to standard output.
+
+    Args:
+      tensor_4d: 4-D NumPy array, should have shape
+        [sequence_size, 1, 1, 1]
+      label_confidence_pairs: dict, keys are tokens or integers, values are
+        float between 0 and 1 (confidence).
+    """
+    if not (tensor_4d.shape[1] == 1 and
+            tensor_4d.shape[2] == 1 and
+            tensor_4d.shape[3] == 1):
+      raise ValueError("Tensors for text datasets should have shape " +
+                       "[T, 1, 1, 1].")
+    indices = np.squeeze(tensor_4d)
+    if 'channels_list' in self.other_info:
+      channels_list = self.other_info['channels_list']
+    else:
+      channels_list = range(len(data))
+    tokens = [channels_list[int(idx)] for idx in indices]
+    is_chn = is_chinese(tokens)
+    if is_chinese(tokens):
+      sep = ''
+    else:
+      sep = ' '
+    document = sep.join(tokens)
+    print(str(label_confidence_pairs), document)
+
+  @classmethod
+  def play_sound(cls, data, nchannels=1, sampwidth=2,
+                 framerate=16000, comptype='NONE', compname='not compressed'):
+    # Create a tmp file
+    tmp_filepath = '/tmp/sound.wav'
+    # Write data
+    librosa.output.write_wav(tmp_filepath, data, framerate)
+    # PLAY
+    playsound(tmp_filepath)
+    # Delete the tmp file
+    os.system('rm ' + tmp_filepath)
+
+  @classmethod
   def get_nth_element(cls, autodl_dataset, num):
     """Get n-th element in `autodl_dataset` using iterator."""
     dataset = autodl_dataset.get_dataset()
@@ -188,6 +263,10 @@ class DataBrowser(object):
       return DataBrowser.show_image
     elif domain == 'video':
       return DataBrowser.show_video
+    elif domain == 'speech':
+      return DataBrowser.show_speech
+    elif domain == 'text':
+      return self.show_text
     else:
       raise NotImplementedError("Show method not implemented for domain: " +\
                                  "{}".format(domain))
@@ -217,31 +296,35 @@ class DataBrowser(object):
     self.show(tensor_4d, label_confidence_pairs=label_conf_pairs)
 
 
-def show_examples(dataset_dir, num_examples=5, subset='train'):
-      print("Start visualizing process for dataset: {}...".format(dataset_dir))
-      data_browser = DataBrowser(dataset_dir)
-      num_examples = min(10, int(num_examples))
-      for i in range(num_examples):
-        print("Visualizing example {}.".format(i+1) +
-              " Close the corresponding window to continue...")
+  def show_examples(self, num_examples=5, subset='train'):
+        print("Start visualizing process for dataset: {}..."\
+              .format(self.dataset_dir))
+        num_examples = min(10, int(num_examples))
+        for i in range(num_examples):
+          print("#### Visualizing example {}.".format(i+1) +
+                " Close the corresponding window to continue...")
+          self.show_an_example(subset=subset)
 
-        data_browser.show_an_example(subset=subset)
+  def get_tensor_shape(self, bundle_index=0):
+      metadata = self.d_train.get_metadata()
+      return metadata.get_tensor_shape(bundle_index)
 
-def get_tensor_shape(dataset_dir, bundle_index=0):
-    data_browser = DataBrowser(dataset_dir)
-    metadata = data_browser.d_train.get_metadata()
-    return metadata.get_tensor_shape(bundle_index)
+  def get_size(self):
+      num_train = self.d_train.get_metadata().size()
+      num_test = self.d_test.get_metadata().size()
+      return num_train, num_test
 
-def get_size(dataset_dir):
-    data_browser = DataBrowser(dataset_dir)
-    num_train = data_browser.d_train.get_metadata().size()
-    num_test = data_browser.d_test.get_metadata().size()
-    return num_train, num_test
+  def get_output_dim(self):
+      output_dim = self.d_train.get_metadata().get_output_size()
+      return output_dim
 
-def get_output_dim(dataset_dir):
-    data_browser = DataBrowser(dataset_dir)
-    output_dim = data_browser.d_train.get_metadata().get_output_size()
-    return output_dim
+def is_chinese(tokens):
+  """Judge if the tokens are in Chinese. The current criterion is if each token
+  contains one single character, because when the documents are in Chinese,
+  we tokenize each character when formatting the dataset.
+  """
+  is_of_len_1 = all([len(t)==1 for t in tokens[:100]])
+  return is_of_len_1
 
 def main(*argv):
   """Do you really need a docstring?"""
@@ -261,11 +344,13 @@ def main(*argv):
   dataset_dir = FLAGS.dataset_dir
   subset = FLAGS.subset
   num_examples = FLAGS.num_examples
-  num_train, num_test = get_size(dataset_dir)
+
+  data_browser = DataBrowser(dataset_dir)
+  num_train, num_test = data_browser.get_size()
   print('num_train: {}\nnum_test: {}'.format(num_train, num_test))
-  print('tensor shape: {}'.format(get_tensor_shape(dataset_dir)))
-  print('output_dim: {}'.format(get_output_dim(dataset_dir)))
-  show_examples(dataset_dir, num_examples=num_examples, subset=subset)
+  print('tensor shape: {}'.format(data_browser.get_tensor_shape()))
+  print('output_dim: {}'.format(data_browser.get_output_dim()))
+  data_browser.show_examples(num_examples=num_examples, subset=subset)
 
 
 if __name__ == '__main__':

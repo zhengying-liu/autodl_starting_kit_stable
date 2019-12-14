@@ -49,9 +49,9 @@ If you are new to docker, install docker from https://docs.docker.com/get-starte
 Then, at the shell, run:
 ```
 cd path/to/autodl_starting_kit_stable/
-docker run -it -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:cpu
+docker run -it -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:cpu-latest
 ```
-The tag `cpu` indicates that this image only supports usage of CPU (instead of
+The tag `cpu-latest` indicates that this image only supports usage of CPU (instead of
 GPU). The option `-v "$(pwd):/app/codalab"` mounts current directory
 (`autodl_starting_kit_stable/`) as `/app/codalab`. If you want to mount other
 directories on your disk, please replace `$(pwd)` by your own directory.
@@ -60,16 +60,17 @@ inside Docker.
 
 The backend on CodaLab runs a slightly different Docker image
 ```
-evariste/autodl:gpu
+evariste/autodl:gpu-latest
 ```
-who has Nvidia GPU supports. Both Docker images have installed packages such as
-`tensorflow-gpu=1.13.1` (or `tensorflow=1.13.1` for `cpu`), `torch=1.1.0`,
+who has Nvidia GPU supports. Both Docker images have `python=3.5.2` and have
+installed packages such as
+`tensorflow-gpu=1.13.1` (or `tensorflow=1.13.1` for `cpu`), `torch=1.3.1`,
 `keras=2.2.4`, CUDA 10, cuDNN 7.5, etc. If you want to
 run local test with Nvidia GPU support, please make sure you have
 [installed nvidia-docker](https://github.com/NVIDIA/nvidia-docker) and run
 instead
 ```
-nvidia-docker run -it -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:gpu
+nvidia-docker run -it -v "$(pwd):/app/codalab" -p 8888:8888 evariste/autodl:gpu-latest
 ```
 
 Make sure you use enough RAM (**at least 4GB**). If the port 8888 is occupied,
@@ -113,11 +114,12 @@ http://0.0.0.0:8888/?token=82e416e792c8f6a9f2194d2f4dbbd3660ad4ca29a4c58fe7
 and select `tutorial.ipynb` in the menu.
 
 ## Download public datasets
-We provide 5 public datasets for participants. They can use these datasets to:
+We provide several public datasets for participants. They can use these datasets to:
 1. Explore data (e.g. using `data_browser.py`, see next section);
 2. Do local test for their own algorithm;
 3. Enable meta-learning.
-We also provide a script to facilitate the data downloading process. The usage
+These datasets can be downloaded on the competition website and we also provide
+a script to facilitate the data downloading process. The usage
 is:
 ```bash
 python download_public_datasets.py
