@@ -227,6 +227,23 @@ class DataBrowser(object):
     document = sep.join(tokens)
     print(str(label_confidence_pairs), document)
 
+  def show_tabular(self, tensor_4d, label_confidence_pairs=None):
+    """Print a tabular example (i.e. a feature vector) to standard output.
+
+    Args:
+      tensor_4d: 4-D NumPy array, should have shape
+        [1, 1, col_count, 1]
+      label_confidence_pairs: dict, keys are tokens or integers, values are
+        float between 0 and 1 (confidence).
+    """
+    if not (tensor_4d.shape[0] == 1 and
+            tensor_4d.shape[1] == 1 and
+            tensor_4d.shape[3] == 1):
+      raise ValueError("Tensors for tabular datasets should have shape " +
+                       "[1, 1, col_count, 1].")
+    vector = np.squeeze(tensor_4d)
+    print(str(label_confidence_pairs), vector)
+
   @classmethod
   def play_sound(cls, data, nchannels=1, sampwidth=2,
                  framerate=16000, comptype='NONE', compname='not compressed'):
@@ -267,6 +284,8 @@ class DataBrowser(object):
       return DataBrowser.show_speech
     elif domain == 'text':
       return self.show_text
+    elif domain == 'tabular':
+      return self.show_tabular
     else:
       raise NotImplementedError("Show method not implemented for domain: " +\
                                  "{}".format(domain))
@@ -297,13 +316,16 @@ class DataBrowser(object):
 
 
   def show_examples(self, num_examples=5, subset='train'):
-        print("Start visualizing process for dataset: {}..."\
-              .format(self.dataset_dir))
-        num_examples = min(10, int(num_examples))
-        for i in range(num_examples):
-          print("#### Visualizing example {}.".format(i+1) +
-                " Close the corresponding window to continue...")
-          self.show_an_example(subset=subset)
+    print("Start visualizing process for dataset: {}..."\
+          .format(self.dataset_dir))
+    num_examples = min(10, int(num_examples))
+    for i in range(num_examples):
+      print("#### Visualizing example {}. ".format(i+1), end='')
+      if self.domain in ['image', 'video', 'speech']:
+        print("Close the corresponding window to continue...")
+      else:
+        print("")
+      self.show_an_example(subset=subset)
 
   def get_tensor_shape(self, bundle_index=0):
       metadata = self.d_train.get_metadata()

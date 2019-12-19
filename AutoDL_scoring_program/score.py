@@ -7,12 +7,13 @@
 #           prediction_dir should contain e.g. start.txt, adult.predict_0, adult.predict_1,..., end.txt.
 #           score_dir should contain scores.txt, detailed_results.html
 
-VERSION = 'v20191204'
+VERSION = 'v20191219'
 DESCRIPTION =\
 """This is the scoring program for AutoDL challenge. It takes the predictions
 made by ingestion program as input and compare to the solution file and produce
 a learning curve.
 Previous updates:
+20191219: [ZY] Write scores.txt file even when failing
 20191204: [ZY] Set scoring waiting time to 30min (1800s)
 20190908: [ZY] Add algebraic operations of learning curves
 20190823: [ZY] Fix the ALC in learning curve: use auc_step instead of auc
@@ -833,14 +834,14 @@ class Evaluator(object):
                        'timestamps': self.relative_timestamps,
                        'nauc_scores': self.scores_so_far['nauc']
                       }
-    if self.is_multiclass_task:
+    if 'accuracy' in self.scores_so_far:
       score_info_dict['accuracy'] = self.scores_so_far['accuracy']
     with open(score_filename, 'w') as f:
       f.write('score: ' + str(score) + '\n')
       f.write('Duration: ' + str(duration) + '\n')
       f.write('timestamps: {}\n'.format(self.relative_timestamps))
       f.write('nauc_scores: {}\n'.format(self.scores_so_far['nauc']))
-      if self.is_multiclass_task:
+      if 'accuracy' in self.scores_so_far:
         f.write('accuracy: {}\n'.format(self.scores_so_far['accuracy']))
     logger.debug("Wrote to score_filename={} with score={}, duration={}"\
                   .format(score_filename, score, duration))
@@ -1095,6 +1096,7 @@ if __name__ == "__main__":
       ingestion_duration = end_info_dict['ingestion_duration']
 
       if end_info_dict['ingestion_success'] == 0:
+        evaluator.write_score()
         logger.error("[-] Some error occurred in ingestion program. " +
                     "Please see output/error log of Ingestion Step.")
       else:
